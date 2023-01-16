@@ -1,0 +1,31 @@
+---
+- name: Update and Upgrade all Hosts && basic settings
+  gather_facts: false
+  become: true
+  become_method: sudo
+  hosts: ubuntu
+  roles:
+     - host-settings
+     
+- name: Update and basic settings NTP
+  become: true
+  become_method: sudo
+  hosts: ubuntu
+  roles:
+     - geerlingguy-ntp
+
+- name: Install docker and dependencies
+  become: true
+  become_method: sudo
+  hosts: docker
+  roles:
+     - install-docker
+
+- name: Change Docker volume path
+  become: true
+  become_method: sudo
+  hosts: docker    
+  vars_files:
+    - ./vars/external.yml
+  roles:
+     - change-docker-path-vol

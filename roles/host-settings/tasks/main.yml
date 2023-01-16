@@ -1,0 +1,90 @@
+---
+- name: Reconfigure package cloud-init
+  debconf:
+    name: cloud-init
+
+- name: Delete cloud-init packages
+  apt:
+    name: cloud-init
+    state: absent
+
+- name: Recursively remove directory /etc/cloud/
+  file:
+    path: /etc/cloud/
+    state: absent
+
+- name: Recursively remove directory /var/lib/cloud/
+  file:
+    path: /var/lib/cloud/
+    state: absent
+
+- name: Disable swapping
+  shell: swapoff --all  
+  register: task_result 
+
+- name: Check if auto update is enabled
+  stat:
+    path: /etc/apt/apt.conf.d/20auto-upgrades
+  register: autoupdate
+
+- name: Disable auto update
+  when: autoupdate.stat.exists
+  file:
+    path: /etc/apt/apt.conf.d/20auto-upgrades
+    state: absent
+
+- name: Wait for any possibly running unattended upgrade to finish
+  when: autoupdate.stat.exists
+  raw: systemd-run --property="After=apt-daily.service apt-daily-upgrade.service" --wait /bin/true
+
+- name: Remove useless packages from the cache
+  apt:
+    autoclean: yes
+
+- name: Remove dependencies that are no longer required
+  apt:
+    autoremove: yes
+
+- name: Upgrade all packages to the latest version
+  apt:
+    name: "*"
+    state: latest
+    force_apt_get: true
+    update_cache: yes
+
+- name: Reboot immediately if there was a change.
+  shell: sleep 2 && /sbin/shutdown -r now "ansible reboot request"
+  async: 1
+  poll: 0
+  when: task_result is changed
+
+- name: Wait for the reboot to complete if there was a change.
+  wait_for_connection:
+    connect_timeout: 20
+    sleep: 5
+    delay: 5
+    timeout: 300
+  when: task_result is changed
+
+- name: Verify system dependencies
+  apt:
+    pkg:
+      - aptitude
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - gnupg-agent
+      - software-properties-common
+      - python3-pip
+      - apache2-utils
+      - tree
+      - wget 
+      - curl
+      - tcpdump
+      - python3-docker
+      - ntp
+      - lsb-release
+    state: latest
+    force_apt_get: true
+    update_cache: yes

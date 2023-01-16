@@ -1,0 +1,7 @@
+---
+# Docker
+device2_hdd_docker: sdb
+parted_hdd_docker: /dev/sdb1
+
+# Others
+TZ: "Europe/Moscow"
