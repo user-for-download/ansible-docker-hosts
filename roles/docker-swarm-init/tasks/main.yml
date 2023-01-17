@@ -1,0 +1,23 @@
+---  
+- name: Check if Swarm has already been Initialized
+  shell: docker node ls
+  register: swarm_status
+  ignore_errors: true
+
+- name: Initialize Docker Swarm
+  docker_swarm:
+    state: present
+  run_once: true
+
+- name: Get the Manager join-token
+  shell: docker swarm join-token --quiet manager
+  when: inventory_hostname == groups.swarm_managers[0]
+  register: manager_token
+
+- name: Get the worker join-token
+  shell: docker swarm join-token --quiet worker
+  when: inventory_hostname == groups.swarm_managers[0]
+  register: worker_token
+
+- debug: var=manager_token.stdout
+- debug: var=worker_token.stdout
