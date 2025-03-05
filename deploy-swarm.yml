@@ -1,22 +1,21 @@
----
 #- name: Delete swarm
 #  hosts: docker
 #  gather_facts: false
 #  roles:
 #    - docker-swarm-leave
-   
+
 - name: Initialize swarm
   hosts: swarm_managers[0]
   gather_facts: false
   roles:
-    - docker-swarm-init
+  - docker-swarm-init
 
 - name: Add managers nodes
   hosts: swarm_managers
   roles:
-    - docker-swarm-add-mgr
+  - docker-swarm-add-mgr
 
 - name: Add Workers nodes
   hosts: swarm_workers
   roles:
-    - docker-swarm-add-wrk
+  - docker-swarm-add-wrk

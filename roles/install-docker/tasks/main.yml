@@ -1,16 +1,20 @@
+---
 - name: Get Docker key
   apt_key:
-    url: https://download.docker.com/linux/ubuntu/gpg
+    keyring: /etc/apt/trusted.gpg.d/docker.gpg
     state: present
-
+    url: "https://download.docker.com/linux/ubuntu/gpg"
 
 - name: Add Docker packages to Repository
   apt_repository:
-    repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release|lower }} stable
-
+    repo: >-
+      deb [arch=amd64] https://download.docker.com/linux/ubuntu {{
+      ansible_distribution_release|lower }} stable
+    state: present
 
 - name: Verify Docker dependencies
   apt:
+    force_apt_get: true
     pkg:
       - apt-transport-https
       - ca-certificates
@@ -24,25 +28,22 @@
       - containerd.io
       - docker-compose-plugin
     state: latest
-    force_apt_get: true
     update_cache: yes
 
-
-- name: Install Docker Module for Python
-  pip:
-    name: docker
-
-
-- name: Appending the group docker 
+- name: Appending the group docker
   user:
     name: ubuntu
     groups: docker
     append: yes
 
+- name: Install Docker Compose if not exist
+  get_url:
+    url: https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-x86_64
+    dest: /usr/local/bin/docker-compose
+    mode: '0755'
 
-- name: Get docker version
-  shell: "docker -v | cut -d ' ' -f 3 | cut -d ',' -f 1"
-  register: version
-
-- debug: var=version.stdout
-- debug: var=ansible_nodename
+- name: Change Docker Compose permission
+  file:
+    path: /usr/local/bin/docker-compose
+    group: docker
+    mode: '0750'

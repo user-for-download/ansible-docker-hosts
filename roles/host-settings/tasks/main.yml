@@ -19,8 +19,8 @@
     state: absent
 
 - name: Disable swapping
-  shell: swapoff --all  
-  register: task_result 
+  shell: swapoff --all
+  register: task_result
 
 - name: Check if auto update is enabled
   stat:
@@ -28,14 +28,16 @@
   register: autoupdate
 
 - name: Disable auto update
-  when: autoupdate.stat.exists
   file:
     path: /etc/apt/apt.conf.d/20auto-upgrades
     state: absent
+  when: autoupdate.stat.exists
 
 - name: Wait for any possibly running unattended upgrade to finish
+  raw: >-
+    systemd-run --property="After=apt-daily.service apt-daily-upgrade.service"
+    --wait /bin/true
   when: autoupdate.stat.exists
-  raw: systemd-run --property="After=apt-daily.service apt-daily-upgrade.service" --wait /bin/true
 
 - name: Remove useless packages from the cache
   apt:
@@ -47,28 +49,52 @@
 
 - name: Upgrade all packages to the latest version
   apt:
+    force_apt_get: yes
     name: "*"
     state: latest
-    force_apt_get: true
     update_cache: yes
 
-- name: Reboot immediately if there was a change.
+- name: Disable IPv6 in sysctl.conf
+  sysctl:
+    name: "{{ item }}"
+    value: '1'
+    state: present
+  with_items:
+    - net.ipv6.conf.all.disable_ipv6
+    - net.ipv6.conf.default.disable_ipv6
+    - net.ipv6.conf.lo.disable_ipv6
+
+- name: Ensure sysctl.conf is updated
+  command: sysctl -p
+
+- name: Disable IPv6 in GRUB configuration
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX='
+    line: 'GRUB_CMDLINE_LINUX="ipv6.disable=1"'
+    state: present
+
+- name: Update GRUB configuration
+  command: update-grub
+  
+- name: Reboot immediately if there was a change
   shell: sleep 2 && /sbin/shutdown -r now "ansible reboot request"
   async: 1
   poll: 0
-  when: task_result is changed
+  when: task_result.changed
 
-- name: Wait for the reboot to complete if there was a change.
+- name: Wait for the reboot to complete if there was a change
   wait_for_connection:
     connect_timeout: 20
-    sleep: 5
     delay: 5
+    sleep: 5
     timeout: 300
-  when: task_result is changed
+  when: task_result.changed
 
 - name: Verify system dependencies
   apt:
-    pkg:
+    force_apt_get: yes
+    name:
       - aptitude
       - apt-transport-https
       - ca-certificates
@@ -79,12 +105,11 @@
       - python3-pip
       - apache2-utils
       - tree
-      - wget 
+      - wget
       - curl
       - tcpdump
       - python3-docker
       - ntp
       - lsb-release
     state: latest
-    force_apt_get: true
     update_cache: yes

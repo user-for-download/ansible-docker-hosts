@@ -1,11 +1,11 @@
----
 - name: Update and Upgrade all Hosts && basic settings
   become: true
   become_method: sudo
   hosts: ubuntu
   roles:
-     - host-settings
-     - geerlingguy-ntp
+    - host-settings
+    - geerlingguy-ntp
+    - default-shell
 
 - name: Install docker and dependencies
   become: true
@@ -15,4 +15,4 @@
     - ./vars/external.yml
   roles:
     - install-docker
-    - change-docker-path-vol
+    # - change-docker-path-vol

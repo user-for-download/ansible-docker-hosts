@@ -1,0 +1,22 @@
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install Fish shell
+  apt:
+    name: fish
+    state: present
+
+- name: Change default shell to Fish
+  user:
+    name: "ubuntu"
+    shell: /usr/bin/fish
+
+- name: Verify Fish is the default shell
+  shell: echo $SHELL
+  register: default_shell
+  changed_when: false
+
+- name: Display default shell
+  debug:
+    msg: "Default shell is {{ default_shell.stdout }}"

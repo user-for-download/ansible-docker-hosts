@@ -1,10 +1,12 @@
----
 - name: Check if Swarm is Already Initialized
   shell: docker node ls
   register: swarm_status
   ignore_errors: true
 
-- debug: var=hostvars[groups['swarm_managers'][0]]['manager_token']['stdout']
+- name: Debug Manager join-token
+  debug:
+    var: hostvars[groups['swarm_managers'][0]]['manager_token']['stdout']
+  when: inventory_hostname == groups['swarm_managers'][0]
 
 - name: Add Managers to the Swarm
   docker_swarm:
@@ -12,5 +14,6 @@
     advertise_addr: "{{ ansible_default_ipv4.address }}"
     join_token: "{{ hostvars[groups['swarm_managers'][0]]['manager_token']['stdout'] }}"
     remote_addrs: "{{ hostvars[groups['swarm_managers'][0]]['ansible_default_ipv4']['address'] }}:2377"
-  when: swarm_status.rc != 0
-
+  when:
+    - swarm_status.rc != 0
+    - inventory_hostname != groups['swarm_managers'][0]

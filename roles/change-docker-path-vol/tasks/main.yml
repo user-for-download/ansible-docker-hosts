@@ -1,7 +1,6 @@
----
 - name: Create a new ext4 primary partition
   community.general.parted:
-    device: /dev/{{ device2_hdd_docker}}
+    device: /dev/{{ device2_hdd_docker }}
     number: 1
     state: present
     fs_type: ext4
@@ -15,18 +14,18 @@
 - name: Update and return only selected facts
   setup:
     filter:
-      - 'ansible_devices'
+      - ansible_devices
 
 - name: Get UUID {{ parted_hdd_docker }}
-  command: lsblk {{ parted_hdd_docker }} -no UUID
+  command: lsblk -no UUID {{ parted_hdd_docker }}
   register: uuid
 
 - debug: var=ansible_devices.sdb.partitions.sdb1.uuid
 - debug: var=uuid.stdout
 
-- name: Service Docker is in a stoped state
+- name: Ensure Docker service is stopped
   service:
-    name: docker 
+    name: docker
     state: stopped
   register: docker_stop
   until: docker_stop.status.ActiveState != "active"
@@ -38,7 +37,9 @@
     path: /var/lib/docker
     state: absent
   ignore_errors: true
-  when: docker_stop.status.ActiveState != "active" and uuid.stdout == ansible_devices.sdb.partitions.sdb1.uuid
+  when: >-
+    docker_stop.status.ActiveState != "active" and uuid.stdout ==
+    ansible_devices.sdb.partitions.sdb1.uuid
 
 - name: Add {{ parted_hdd_docker }} entry to /etc/fstab
   mount:
@@ -46,25 +47,25 @@
     src: UUID="{{ uuid.stdout }}"
     fstype: ext4
     opts: defaults
-    dump: '1'
+    dump: "1"
     state: present
   when: uuid.stdout == ansible_devices.sdb.partitions.sdb1.uuid
 
-- name: Service Docker is in a running state
+- name: Ensure Docker service is started
   service:
-    name: docker 
+    name: docker
     state: started
   register: docker_running
   until: docker_running.status.ActiveState == "active"
   retries: 5
   delay: 10
 
-- name: Reboot immediately if there was a change.
+- name: Reboot immediately if there was a change
   shell: sleep 2 && /sbin/shutdown -r now "ansible reboot request"
   async: 1
   poll: 0
 
-- name: Wait for the reboot to complete if there was a change.
+- name: Wait for the reboot to complete if there was a change
   wait_for_connection:
     connect_timeout: 20
     sleep: 5
@@ -72,7 +73,7 @@
     timeout: 300
 
 - name: Get docker version
-  shell: "docker -v | cut -d ' ' -f 3 | cut -d ',' -f 1"
+  shell: docker -v | cut -d ' ' -f 3 | cut -d ',' -f 1
   register: version
 
 - debug: var=version.stdout

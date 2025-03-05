@@ -1,10 +1,10 @@
-[traefik]
+[ubuntu]
+
+[docker]
 
 [swarm_managers]
 
-
 [swarm_workers]
-
 
 [gluster_nodes]
 

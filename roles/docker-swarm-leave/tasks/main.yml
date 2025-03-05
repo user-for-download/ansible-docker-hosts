@@ -3,3 +3,4 @@
     state: absent
     force: true
   ignore_errors: true
+  when: inventory_hostname in groups['nodes_to_leave']

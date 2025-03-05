@@ -1,5 +1,4 @@
----
-- name: Verify Gluster dependencies  
+- name: Verify Gluster dependencies
   apt:
     pkg:
       - xfsprogs
@@ -10,15 +9,15 @@
     force_apt_get: true
     update_cache: yes
 
-- name: make glusterfs mount dir
+- name: Create GlusterFS mount directory
   file:
     path: "/mnt/{{ gluster_volume_name }}"
     state: directory
 
-- name: mount glusterfs volume gfs
+- name: Mount GlusterFS volume
   mount:
-    name: /mnt/gfs
-    src: "{{ groups.gluster_nodes[0] }}:/{{ gluster_volume_name }}"
+    path: "/mnt/{{ gluster_volume_name }}"
+    src: "localhost:/{{ gluster_volume_name }}"
     fstype: glusterfs
     opts: "defaults,_netdev"
     state: mounted
