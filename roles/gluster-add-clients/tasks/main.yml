@@ -1,5 +1,6 @@
+---
 - name: Verify Gluster dependencies
-  apt:
+  ansible.builtin.apt:
     pkg:
       - xfsprogs
       - attr
@@ -7,15 +8,15 @@
       - glusterfs-client
     state: present
     force_apt_get: true
-    update_cache: yes
+    update_cache: true
 
 - name: Create GlusterFS mount directory
-  file:
+  ansible.builtin.file:
     path: "/mnt/{{ gluster_volume_name }}"
     state: directory
 
 - name: Mount GlusterFS volume
-  mount:
+  ansible.posix.mount:
     path: "/mnt/{{ gluster_volume_name }}"
     src: "localhost:/{{ gluster_volume_name }}"
     fstype: glusterfs

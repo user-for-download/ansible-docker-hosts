@@ -1,0 +1,41 @@
+---
+# ============================
+# Install Necessary Packages
+# ============================
+- name: Install UFW and Fail2Ban
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+    state: present
+    update_cache: true
+
+- name: Allow in UFW (Network {{ ssh_allowed_network }})
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    from_ip: "{{ ssh_allowed_network }}"
+    port: "{{ ssh_port }}"
+  notify: Restart UFW
+
+- name: Ensure UFW is enabled
+  community.general.ufw:
+    state: enabled
+
+# ============================
+# Configure Fail2Ban
+# ============================
+- name: Configure Fail2Ban to ignore specific IPs
+  ansible.builtin.template:
+    src: templates/jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Fail2Ban
+
+- name: Ensure Fail2Ban service is running and enabled
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: true

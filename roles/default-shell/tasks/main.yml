@@ -1,22 +1,42 @@
+---
+# ============================
+# Update APT Cache
+# ============================
 - name: Update apt cache
-  apt:
-    update_cache: yes
+  ansible.builtin.apt:
+    update_cache: true
 
+# ============================
+# Install Fish Shell
+# ============================
 - name: Install Fish shell
-  apt:
+  ansible.builtin.apt:
     name: fish
     state: present
 
+# ============================
+# Change Default Shell to Fish
+# ============================
 - name: Change default shell to Fish
-  user:
-    name: "ubuntu"
+  ansible.builtin.user:
+    name: "{{ target_user }}"
     shell: /usr/bin/fish
 
-- name: Verify Fish is the default shell
-  shell: echo $SHELL
-  register: default_shell
+- name: Verify default shell for the user
+  ansible.builtin.shell: >
+    set -o pipefail &&  getent passwd "{{ target_user }}" | cut -d: -f7
+  args:
+    executable: /bin/bash
+  register: user_shell
   changed_when: false
 
 - name: Display default shell
-  debug:
-    msg: "Default shell is {{ default_shell.stdout }}"
+  ansible.builtin.debug:
+    msg: "Default shell for {{ target_user }} is {{ user_shell.stdout }}"
+
+- name: Ensure Fish is set as the default shell
+  ansible.builtin.assert:
+    that:
+      - user_shell.stdout == "/usr/bin/fish"
+    fail_msg: "Fish is not set as the default shell for {{ target_user }}!"
+    success_msg: "Fish is successfully set as the default shell for {{ target_user }}!"

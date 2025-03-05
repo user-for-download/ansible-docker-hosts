@@ -1,18 +1,83 @@
-- name: Update and Upgrade all Hosts && basic settings
-  become: true
-  become_method: sudo
+---
+- name: Comprehensive System Preparation and Optimization
   hosts: ubuntu
-  roles:
-    - host-settings
-    - geerlingguy-ntp
-    - default-shell
-
-- name: Install docker and dependencies
   become: true
-  become_method: sudo
-  hosts: docker
-  vars_files:
-    - ./vars/external.yml
+  become_method: ansible.builtin.sudo # Fully qualified become method
+
+  vars:
+    core_dependencies:
+      - aptitude
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - git
+      - gnupg
+      - gnupg-agent
+      - software-properties-common
+      - python3-pip
+      - apache2-utils
+      - tree
+      - wget
+      - tcpdump
+      - python3-docker
+      - ntp
+      - lsb-release
+    host_settings_cloud_init_directories:
+      - /etc/cloud/
+      - /var/lib/cloud/
+    host_settings_ipv6_disable_params:
+      - net.ipv6.conf.all.disable_ipv6
+      - net.ipv6.conf.default.disable_ipv6
+      - net.ipv6.conf.lo.disable_ipv6
+    host_settings_update_timers:
+      - apt-daily.timer
+      - apt-daily-upgrade.timer
+
+    ntp_server: "192.168.12.101"
+    chrony_config_file: /etc/chrony/chrony.conf
+    timezone: "Europe/Moscow"
+    target_user: "ubuntu"
+    ssh_allowed_network: "192.168.0.0/16"
+    ssh_port: 22
+    fail2ban_ignore_ips:
+      - "127.0.0.1/8"
+      - "::1"
+      - "192.168.0.0/16"
   roles:
-    - install-docker
-    # - change-docker-path-vol
+    - change-ntp-server
+    - host-settings
+    - default-shell
+    - ufw-and-security
+  handlers:
+    - name: Remove cloud-init configuration directories
+      ansible.builtin.file:
+        path: "{{ host_settings_cloud_init_dir }}"
+        state: absent
+      loop: "{{ host_settings_cloud_init_directories }}"
+      loop_control:
+        loop_var: host_settings_cloud_init_dir
+
+    - name: Remove swap from fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: "^.*swap.*$"
+        state: absent
+      changed_when: false
+
+    - name: Apply sysctl configuration
+      ansible.builtin.command: sysctl -p
+      changed_when: false
+
+    - name: Update GRUB configuration
+      ansible.builtin.command: update-grub
+      changed_when: false
+
+    - name: Restart UFW
+      ansible.builtin.service:
+        name: ufw
+        state: restarted
+
+    - name: Restart Fail2Ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted

@@ -1,32 +1,33 @@
+---
 - name: Check if Swarm has already been Initialized
-  shell: docker node ls
+  ansible.builtin.command: docker node ls
   register: swarm_status
   ignore_errors: true
 
 - name: Initialize Docker Swarm
-  docker_swarm:
+  community.docker.docker_swarm:
     state: present
   run_once: true
   when: swarm_status.rc != 0
 
 - name: Get the Manager join-token
-  shell: docker swarm join-token --quiet manager
+  ansible.builtin.command: docker swarm join-token --quiet manager
   when: inventory_hostname == groups['swarm_managers'][0]
   register: manager_token
   run_once: true
 
 - name: Get the worker join-token
-  shell: docker swarm join-token --quiet worker
+  ansible.builtin.command: docker swarm join-token --quiet worker
   when: inventory_hostname == groups['swarm_managers'][0]
   register: worker_token
   run_once: true
 
 - name: Debug Manager join-token
-  debug:
+  ansible.builtin.debug:
     var: manager_token.stdout
   when: inventory_hostname == groups['swarm_managers'][0]
 
 - name: Debug Worker join-token
-  debug:
+  ansible.builtin.debug:
     var: worker_token.stdout
   when: inventory_hostname == groups['swarm_managers'][0]

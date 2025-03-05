@@ -1,0 +1,44 @@
+---
+- name: Ensure Chrony is installed
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+    update_cache: true
+
+- name: Set timezone to {{ timezone }}
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Backup existing Chrony configuration file
+  ansible.builtin.copy:
+    src: "{{ chrony_config_file }}"
+    dest: "{{ chrony_config_file }}.bak"
+    remote_src: true
+    force: false # Only backup if it doesn't already exist
+    mode: "0644" # Ensure correct read/write permissions for owner, read for others
+    owner: root # Set owner to root
+    group: root # Set group to root
+
+- name: Configure Chrony to use {{ ntp_server }}
+  ansible.builtin.blockinfile:
+    path: "{{ chrony_config_file }}"
+    block: |
+      server {{ ntp_server }} iburst
+    create: true # Create the file if it doesn't exist
+    mode: "0644" # Ensure correct read/write permissions for owner, read for others
+    owner: root # Set owner to root
+    group: root # Set group to root
+
+- name: Ensure Chrony service is restarted
+  ansible.builtin.systemd:
+    name: chronyd
+    state: restarted
+
+# ============================
+# Enable and Start Chrony Service
+# ============================
+- name: Ensure Chrony service is enabled and running
+  ansible.builtin.systemd:
+    name: chronyd
+    enabled: true
+    state: started

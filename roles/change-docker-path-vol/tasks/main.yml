@@ -1,30 +1,37 @@
-- name: Create a new ext4 primary partition
+---
+- name: Create a new ext4 primary partition ({{ device2_hdd_docker }})
   community.general.parted:
-    device: /dev/{{ device2_hdd_docker }}
+    device: "/dev/{{ device2_hdd_docker }}"
     number: 1
     state: present
     fs_type: ext4
 
-- name: Create a new ext4 filesystem {{ parted_hdd_docker }}
-  filesystem:
+- name: Create a new ext4 filesystem ({{ parted_hdd_docker }})
+  community.general.filesystem:
     fstype: ext4
     dev: "{{ parted_hdd_docker }}"
     force: true
 
 - name: Update and return only selected facts
-  setup:
+  ansible.builtin.setup:
     filter:
       - ansible_devices
 
-- name: Get UUID {{ parted_hdd_docker }}
-  command: lsblk -no UUID {{ parted_hdd_docker }}
+- name: Get UUID for filesystem ({{ parted_hdd_docker }})
+  ansible.builtin.command: lsblk -no UUID {{ parted_hdd_docker }}
   register: uuid
+  changed_when: false
 
-- debug: var=ansible_devices.sdb.partitions.sdb1.uuid
-- debug: var=uuid.stdout
+- name: Display UUID from ansible_devices for sdb1
+  ansible.builtin.debug:
+    var: ansible_devices.sdb.partitions.sdb1.uuid
+
+- name: Display UUID from command output
+  ansible.builtin.debug:
+    var: uuid.stdout
 
 - name: Ensure Docker service is stopped
-  service:
+  ansible.builtin.service:
     name: docker
     state: stopped
   register: docker_stop
@@ -32,19 +39,23 @@
   retries: 5
   delay: 10
 
+- name: Check if /var/lib/docker exists
+  ansible.builtin.stat:
+    path: /var/lib/docker
+  register: docker_dir_stat
+
 - name: Recursively remove directory /var/lib/docker
-  file:
+  ansible.builtin.file:
     path: /var/lib/docker
     state: absent
-  ignore_errors: true
-  when: >-
-    docker_stop.status.ActiveState != "active" and uuid.stdout ==
-    ansible_devices.sdb.partitions.sdb1.uuid
+  register: remove_docker_dir
+  failed_when: remove_docker_dir is failed
+  when: docker_dir_stat.stat.exists and docker_stop.status.ActiveState != "active" and uuid.stdout == ansible_devices.sdb.partitions.sdb1.uuid
 
-- name: Add {{ parted_hdd_docker }} entry to /etc/fstab
-  mount:
+- name: Add filesystem entry to /etc/fstab ({{ parted_hdd_docker }})
+  ansible.posix.mount:
     path: /var/lib/docker
-    src: UUID="{{ uuid.stdout }}"
+    src: "UUID={{ uuid.stdout }}"
     fstype: ext4
     opts: defaults
     dump: "1"
@@ -52,7 +63,7 @@
   when: uuid.stdout == ansible_devices.sdb.partitions.sdb1.uuid
 
 - name: Ensure Docker service is started
-  service:
+  ansible.builtin.service:
     name: docker
     state: started
   register: docker_running
@@ -60,20 +71,25 @@
   retries: 5
   delay: 10
 
-- name: Reboot immediately if there was a change
-  shell: sleep 2 && /sbin/shutdown -r now "ansible reboot request"
-  async: 1
-  poll: 0
+- name: Reboot immediately if changes occurred
+  ansible.builtin.reboot:
+    msg: "Ansible reboot request"
+    pre_reboot_delay: 2
+    reboot_timeout: 300
+  when: (docker_stop.changed | default(false)) or (remove_docker_dir.changed | default(false))
 
 - name: Wait for the reboot to complete if there was a change
-  wait_for_connection:
+  ansible.builtin.wait_for_connection:
     connect_timeout: 20
     sleep: 5
     delay: 5
     timeout: 300
 
-- name: Get docker version
-  shell: docker -v | cut -d ' ' -f 3 | cut -d ',' -f 1
+- name: Get Docker version
+  ansible.builtin.shell: "set -o pipefail; docker -v | cut -d ' ' -f 3 | cut -d ',' -f 1"
   register: version
+  changed_when: false
 
-- debug: var=version.stdout
+- name: Display Docker version
+  ansible.builtin.debug:
+    var: version.stdout

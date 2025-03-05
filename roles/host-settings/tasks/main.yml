@@ -1,115 +1,122 @@
 ---
-- name: Reconfigure package cloud-init
-  debconf:
-    name: cloud-init
+# Cloud-Init Removal with Enhanced Error Handling
+- name: Remove cloud-init comprehensively
+  block:
+    - name: Verify cloud-init installation status
+      ansible.builtin.package_facts:
+        manager: auto
 
-- name: Delete cloud-init packages
-  apt:
-    name: cloud-init
-    state: absent
+    - name: Purge cloud-init packages
+      ansible.builtin.apt:
+        name: cloud-init
+        state: absent
+        purge: true
+        autoremove: true
+      when: "'cloud-init' in ansible_facts.packages"
+      register: host_settings_cloud_init_removal
 
-- name: Recursively remove directory /etc/cloud/
-  file:
-    path: /etc/cloud/
-    state: absent
+- name: Remove cloud-init comprehensively
+  block:
+    - name: Verify cloud-init installation status
+      ansible.builtin.package_facts:
+        manager: auto
 
-- name: Recursively remove directory /var/lib/cloud/
-  file:
-    path: /var/lib/cloud/
-    state: absent
+    - name: Purge cloud-init packages
+      ansible.builtin.apt:
+        name: cloud-init
+        state: absent
+        purge: true
+        autoremove: true
+      when: "'cloud-init' in ansible_facts.packages"
+      notify: Remove cloud-init configuration directories
 
-- name: Disable swapping
-  shell: swapoff --all
-  register: task_result
+# Swap Management with Logging
+- name: Manage system swap
+  block:
+    - name: Collect swap information
+      ansible.builtin.command: swapon --show
+      register: host_settings_swap_status
+      changed_when: false
+      failed_when: false
 
-- name: Check if auto update is enabled
-  stat:
-    path: /etc/apt/apt.conf.d/20auto-upgrades
-  register: autoupdate
+    - name: Disable swap
+      ansible.builtin.command:
+        cmd: swapoff -a
+      when: host_settings_swap_status.stdout | length > 0
+      changed_when: host_settings_swap_status.stdout | length > 0
+      notify: Remove swap from fstab
 
-- name: Disable auto update
-  file:
-    path: /etc/apt/apt.conf.d/20auto-upgrades
-    state: absent
-  when: autoupdate.stat.exists
+# Automatic Updates Management
+- name: Manage automatic system updates
+  block:
+    - name: Disable automatic updates
+      ansible.builtin.systemd:
+        name: "{{ host_settings_update_timer }}"
+        state: stopped
+        enabled: false
+        masked: true
+      loop: "{{ host_settings_update_timers }}"
+      loop_control:
+        loop_var: host_settings_update_timer
+      register: host_settings_update_timers_disabled
 
-- name: Wait for any possibly running unattended upgrade to finish
-  raw: >-
-    systemd-run --property="After=apt-daily.service apt-daily-upgrade.service"
-    --wait /bin/true
-  when: autoupdate.stat.exists
+    - name: Remove auto-update configuration
+      ansible.builtin.file:
+        path: /etc/apt/apt.conf.d/20auto-upgrades
+        state: absent
 
-- name: Remove useless packages from the cache
-  apt:
-    autoclean: yes
+# Comprehensive Package Management
+- name: Optimize package system
+  block:
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
 
-- name: Remove dependencies that are no longer required
-  apt:
-    autoremove: yes
+    - name: Upgrade system packages
+      ansible.builtin.apt:
+        upgrade: dist
+        force_apt_get: true
+      register: host_settings_system_upgraded
 
-- name: Upgrade all packages to the latest version
-  apt:
-    force_apt_get: yes
-    name: "*"
-    state: latest
-    update_cache: yes
+    - name: Clean package cache
+      ansible.builtin.apt:
+        autoclean: true
+        autoremove: true
 
-- name: Disable IPv6 in sysctl.conf
-  sysctl:
-    name: "{{ item }}"
-    value: '1'
+# IPv6 Configuration with Flexibility
+- name: Configure IPv6
+  block:
+    - name: Disable IPv6 via sysctl
+      ansible.posix.sysctl:
+        name: "{{ host_settings_ipv6_param }}"
+        value: "1"
+        state: present
+        sysctl_file: /etc/sysctl.conf
+        reload: true
+      loop: "{{ host_settings_ipv6_disable_params }}"
+      loop_control:
+        loop_var: host_settings_ipv6_param
+      notify: Apply sysctl configuration
+
+    - name: Modify GRUB to disable IPv6
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: "^GRUB_CMDLINE_LINUX=.*$"
+        line: 'GRUB_CMDLINE_LINUX="ipv6.disable=1"'
+      notify: Update GRUB configuration
+
+# Essential System Dependencies
+- name: Install core system dependencies
+  ansible.builtin.apt:
+    name: "{{ core_dependencies }}"
     state: present
-  with_items:
-    - net.ipv6.conf.all.disable_ipv6
-    - net.ipv6.conf.default.disable_ipv6
-    - net.ipv6.conf.lo.disable_ipv6
+    update_cache: true
 
-- name: Ensure sysctl.conf is updated
-  command: sysctl -p
-
-- name: Disable IPv6 in GRUB configuration
-  lineinfile:
-    path: /etc/default/grub
-    regexp: '^GRUB_CMDLINE_LINUX='
-    line: 'GRUB_CMDLINE_LINUX="ipv6.disable=1"'
-    state: present
-
-- name: Update GRUB configuration
-  command: update-grub
-  
-- name: Reboot immediately if there was a change
-  shell: sleep 2 && /sbin/shutdown -r now "ansible reboot request"
-  async: 1
-  poll: 0
-  when: task_result.changed
-
-- name: Wait for the reboot to complete if there was a change
-  wait_for_connection:
-    connect_timeout: 20
-    delay: 5
-    sleep: 5
-    timeout: 300
-  when: task_result.changed
-
-- name: Verify system dependencies
-  apt:
-    force_apt_get: yes
-    name:
-      - aptitude
-      - apt-transport-https
-      - ca-certificates
-      - curl
-      - gnupg
-      - gnupg-agent
-      - software-properties-common
-      - python3-pip
-      - apache2-utils
-      - tree
-      - wget
-      - curl
-      - tcpdump
-      - python3-docker
-      - ntp
-      - lsb-release
-    state: latest
-    update_cache: yes
+# Conditional Reboot
+- name: Reboot system if necessary
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    msg: "System reboot initiated by Ansible"
+  when: >-
+    host_settings_system_upgraded.changed or  host_settings_update_timers_disabled.changed
