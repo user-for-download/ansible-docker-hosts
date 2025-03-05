@@ -1,7 +1,0 @@
-inventory.ini
-add-new-user.yml
-set-static-ip.yml
-.gitignore
-.ansible-lint
-.vscode
-.ansible
