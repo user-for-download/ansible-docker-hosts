@@ -23,3 +23,4 @@ group_vars/all.yml
 group_vars/ubuntu.yml
 group_vars/docker.yml
 inventory.yml
+roles/user_setup/defaults/main.yml
