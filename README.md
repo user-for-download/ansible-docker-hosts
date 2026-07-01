@@ -9,6 +9,18 @@ Automated Ubuntu server provisioning with Docker, security hardening, and modern
 git clone git@github.com:user-for-download/ansible-docker-hosts.git
 cd ansible-docker-hosts
 
+# Setup config files (copy examples to working configs)
+cp group_vars/all.yml.example group_vars/all.yml
+cp group_vars/ubuntu.yml.example group_vars/ubuntu.yml
+cp group_vars/docker.yml.example group_vars/docker.yml
+cp inventory.yml.example inventory.yml
+
+# Edit configs with your values
+vi group_vars/all.yml
+vi group_vars/ubuntu.yml
+vi group_vars/docker.yml
+vi inventory.yml
+
 # Run pre-settings (system prep + security)
 ansible-playbook pre-settings.yml --limit <host>
 
@@ -21,7 +33,7 @@ ansible-playbook user-setup.yml --limit <host>
 
 ## Inventory
 
-Edit `inventory.yml` to add your hosts:
+Copy `inventory.yml.example` to `inventory.yml` and edit your hosts:
 
 ```yaml
 all:
