@@ -1,0 +1,8 @@
+---
+- name: Configure Static IP with Netplan
+  hosts: all
+  become: true
+  gather_facts: true
+
+  roles:
+    - netplan_static

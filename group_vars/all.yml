@@ -1,0 +1,21 @@
+# group_vars/all.yml
+---
+trusted_networks:
+  - "10.0.1.0/24"
+  - "10.0.2.0/24"
+
+timezone: "UTC"
+target_user: "deploy"
+
+# --- Static IP defaults ---
+static_interface: ens192
+static_gateway: "10.0.1.1"
+static_dns_servers:
+  - "10.0.1.2"
+  - "10.0.1.100"
+static_dns_search: "example.local"
+netplan_config_file: "/etc/netplan/01-ansible-static.yaml"
+
+apt_proxy: "http://198.51.100.1:3142"
+ansible_user_id: "deploy"
+zsh_user_home: "/home/deploy"

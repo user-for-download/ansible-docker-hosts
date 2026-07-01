@@ -1,0 +1,8 @@
+---
+device2_hdd_docker: ""
+parted_hdd_docker: ""
+docker_data_path: "/var/lib/docker"
+mount_options: "defaults,noatime,nodiratime"
+docker_service_retries: 5
+docker_storage_wipe_disk: false
+cleanup_old_docker_dir: false

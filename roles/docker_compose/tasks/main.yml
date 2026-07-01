@@ -1,0 +1,71 @@
+---
+# Plugin method — already installed via docker_install role
+- name: Verify Docker Compose plugin
+  when: docker_compose_install_method == "plugin"
+  block:
+    - name: Check Docker Compose plugin
+      ansible.builtin.command: docker compose version --short
+      register: compose_plugin_version
+      changed_when: false
+
+    - name: Display Compose plugin version
+      ansible.builtin.debug:
+        msg: "Docker Compose plugin: {{ compose_plugin_version.stdout }}"
+
+# Binary method — standalone binary
+- name: Install Docker Compose binary
+  when: docker_compose_install_method == "binary"
+  block:
+    - name: Set architecture
+      ansible.builtin.set_fact:
+        docker_compose_arch: "{{ 'aarch64' if ansible_architecture == 'aarch64' else 'x86_64' }}"
+
+    - name: Set download URL
+      ansible.builtin.set_fact:
+        docker_compose_url: >-
+          https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-linux-{{ docker_compose_arch }}
+
+    - name: Check installed version
+      ansible.builtin.command: /usr/local/bin/docker-compose version --short
+      register: current_compose
+      changed_when: false
+      failed_when: false
+
+    - name: Download and install Docker Compose
+      when: >-
+        current_compose.rc != 0 or
+        docker_compose_version not in current_compose.stdout
+      block:
+        - name: Download checksum
+          ansible.builtin.uri:
+            url: "{{ docker_compose_url }}.sha256"
+            return_content: true
+          register: compose_checksum
+          failed_when: false
+
+        - name: Download binary with checksum
+          ansible.builtin.get_url:
+            url: "{{ docker_compose_url }}"
+            dest: /usr/local/bin/docker-compose
+            checksum: "{{ 'sha256:' + compose_checksum.content.split()[0] if compose_checksum is succeeded else omit }}"
+            owner: root
+            group: root
+            mode: "0755"
+            force: true
+          retries: 3
+          delay: 5
+
+        - name: Create symlink
+          ansible.builtin.file:
+            src: /usr/local/bin/docker-compose
+            dest: /usr/bin/docker-compose
+            state: link
+
+    - name: Verify installation
+      ansible.builtin.command: /usr/local/bin/docker-compose version --short
+      changed_when: false
+      register: compose_binary_version
+
+    - name: Display version
+      ansible.builtin.debug:
+        msg: "Docker Compose binary: {{ compose_binary_version.stdout }}"

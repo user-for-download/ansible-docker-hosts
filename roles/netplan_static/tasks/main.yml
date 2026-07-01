@@ -1,0 +1,55 @@
+---
+- name: Ensure Netplan is installed
+  ansible.builtin.package:
+    name: netplan.io
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Write Netplan static IP config
+  ansible.builtin.template:
+    src: netplan-static.yaml.j2
+    dest: "{{ netplan_config_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: netplan_config
+
+- name: Validate Netplan configuration
+  ansible.builtin.command: netplan generate
+  changed_when: false
+  when: netplan_config.changed
+
+- name: Apply Netplan configuration
+  ansible.builtin.command: netplan apply
+  when: netplan_config.changed
+
+- name: Wait for host on new IP
+  ansible.builtin.wait_for_connection:
+    delay: 10
+    timeout: 60
+  vars:
+    ansible_host: "{{ static_ip.split('/')[0] }}"
+  when: netplan_config.changed
+
+- name: Verify IP is configured
+  ansible.builtin.command: ip -4 addr show {{ static_interface }}
+  register: ip_check
+  changed_when: false
+  failed_when: "static_ip.split('/')[0] not in ip_check.stdout"
+
+- name: Disable systemd-networkd-wait-online
+  ansible.builtin.systemd:
+    name: systemd-networkd-wait-online.service
+    enabled: false
+    state: stopped
+    masked: true
+
+- name: Disable cloud-init if not needed
+  ansible.builtin.file:
+    path: /etc/cloud/cloud-init.disabled
+    state: touch
+    mode: "0644"
+
+- name: Display network configuration
+  ansible.builtin.debug:
+    msg: "{{ ip_check.stdout_lines }}"

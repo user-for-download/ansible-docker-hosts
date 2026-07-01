@@ -1,0 +1,18 @@
+---
+- name: Ensure docker group exists
+  ansible.builtin.group:
+    name: docker
+    state: present
+    system: true
+
+- name: Add users to docker group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"
+  when: docker_users | length > 0
+
+# meta tasks cannot use 'when' — this always runs but is safe
+- name: Reset ssh connection to apply group changes
+  ansible.builtin.meta: reset_connection

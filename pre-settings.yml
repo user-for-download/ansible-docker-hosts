@@ -1,0 +1,45 @@
+---
+- name: System Preparation and Optimization
+  hosts: ubuntu
+  become: true
+  become_method: sudo
+  gather_facts: true
+
+  pre_tasks:
+    - name: Validate target is Ubuntu
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+        fail_msg: "This playbook only supports Ubuntu hosts"
+      tags: always
+
+  roles:
+    - role: host_settings
+      tags: [system, base]
+    - role: chrony_client
+      tags: [ntp, chrony]
+    - role: security_hardening
+      tags: [security, hardening]
+
+  post_tasks:
+    - name: Verify chrony synchronization
+      ansible.builtin.command: chronyc tracking
+      changed_when: false
+      tags: [ntp, verify]
+
+    - name: Verify UFW status
+      ansible.builtin.command: ufw status verbose
+      changed_when: false
+      register: ufw_status
+      tags: [security, verify]
+
+#     - name: Verify nftables status
+#       ansible.builtin.command: nft list ruleset
+#       changed_when: false
+#       register: nft_status
+#       tags: [security, verify]
+
+    - name: Display status
+      ansible.builtin.debug:
+        msg: "{{ ufw_status.stdout_lines }}"
+      tags: [verify]

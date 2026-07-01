@@ -1,0 +1,27 @@
+---
+- name: Verify Docker is installed
+  ansible.builtin.command: which docker
+  register: docker_path
+  changed_when: false
+
+- name: Verify Docker daemon is responsive
+  ansible.builtin.command: docker version --format json
+  register: docker_version_json
+  changed_when: false
+
+- name: Parse Docker version
+  ansible.builtin.set_fact:
+    docker_info: "{{ docker_version_json.stdout | from_json }}"
+
+- name: Check Docker Compose
+  ansible.builtin.command: docker compose version --short
+  register: compose_version
+  changed_when: false
+  failed_when: false
+
+- name: Display summary
+  ansible.builtin.debug:
+    msg:
+      - "Docker: {{ docker_info.Server.Version | default('N/A') }}"
+      - "Compose: {{ compose_version.stdout | default('Not installed') }}"
+      - "Path: {{ docker_path.stdout }}"

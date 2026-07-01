@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Ansible
+*.retry
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vault password file
+.vault_pass
+vault-password.txt

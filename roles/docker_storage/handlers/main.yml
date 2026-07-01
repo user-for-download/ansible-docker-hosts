@@ -1,0 +1,10 @@
+---
+- name: Restart docker (storage)
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+    daemon_reload: true
+  register: docker_restarted
+  until: docker_restarted.status.ActiveState == "active"
+  retries: 5
+  delay: 10

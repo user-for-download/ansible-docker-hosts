@@ -1,0 +1,20 @@
+---
+- name: Install Docker dependencies
+  ansible.builtin.apt:
+    name: "{{ docker_dependencies }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Python Docker packages
+  ansible.builtin.apt:
+    name: "{{ docker_python_packages }}"
+    state: present
+
+- name: Remove old Docker versions
+  ansible.builtin.apt:
+    name: "{{ docker_old_packages }}"
+    state: absent
+    purge: true
+    autoremove: true
+  when: docker_remove_old_versions | bool

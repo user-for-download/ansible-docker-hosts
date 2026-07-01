@@ -1,0 +1,39 @@
+---
+- name: Configure Chrony NTP client
+  tags: [chrony, ntp]
+  block:
+    - name: Install chrony
+      ansible.builtin.apt:
+        name: chrony
+        state: present
+
+    - name: Check for existing configuration
+      ansible.builtin.stat:
+        path: "{{ chrony_config_file }}"
+      register: chrony_conf
+
+    - name: Back up original configuration (once)
+      ansible.builtin.copy:
+        src: "{{ chrony_config_file }}"
+        dest: "{{ chrony_config_file }}.original"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+        force: false
+      when: chrony_conf.stat.exists
+
+    - name: Deploy chrony configuration
+      ansible.builtin.template:
+        src: chrony.conf.j2
+        dest: "{{ chrony_config_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Chrony configuration changed
+
+    - name: Enable and start chrony
+      ansible.builtin.systemd:
+        name: chrony
+        enabled: true
+        state: started

@@ -1,0 +1,38 @@
+---
+- name: Validate Docker storage
+  block:
+    - name: Get Docker root directory
+      ansible.builtin.command: docker info --format '{% raw %}{{.DockerRootDir}}{% endraw %}'
+      register: docker_root
+      changed_when: false
+
+    - name: Verify Docker uses new storage
+      ansible.builtin.assert:
+        that:
+          - docker_root.stdout == docker_data_path
+        fail_msg: "Docker is not using {{ docker_data_path }}"
+
+    - name: Get storage driver
+      ansible.builtin.command: docker info --format '{% raw %}{{.Driver}}{% endraw %}'
+      register: storage_driver
+      changed_when: false
+
+    - name: Display configuration
+      ansible.builtin.debug:
+        msg:
+          - "Docker Root: {{ docker_root.stdout }}"
+          - "Storage Driver: {{ storage_driver.stdout }}"
+          - "Partition UUID: {{ docker_partition_uuid }}"
+
+    - name: Verify Docker daemon
+      ansible.builtin.command: docker info
+      changed_when: false
+
+- name: Clean up old directory
+  when:
+    - docker_dir_moved is defined
+    - docker_dir_moved is changed
+    - cleanup_old_docker_dir | bool
+  ansible.builtin.file:
+    path: "{{ docker_data_path }}.old"
+    state: absent

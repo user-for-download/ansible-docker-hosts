@@ -1,0 +1,141 @@
+# >>> install.sh managed zshrc >>>
+
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+[ -f "$HOME/.local/etc/init.sh" ] && source "$HOME/.local/etc/init.sh"
+
+[[ $- != *i* ]] && return
+[[ -z "$TERM" || "$TERM" == "dumb" ]] && export TERM="xterm-256color"
+
+export EDITOR="${EDITOR:-nano}"
+export VISUAL="${VISUAL:-nano}"
+export PAGER="${PAGER:-less}"
+export LESS="-R -F -X"
+
+typeset -U path
+path=("$HOME/.fzf/bin" "$HOME/.local/bin" "$HOME/bin" "${path[@]}")
+export PATH
+
+HISTFILE="${ZDOTDIR:-$HOME}/.zsh_history"
+HISTSIZE=100000
+SAVEHIST=50000
+
+setopt EXTENDED_HISTORY INC_APPEND_HISTORY SHARE_HISTORY
+setopt HIST_EXPIRE_DUPS_FIRST HIST_IGNORE_ALL_DUPS HIST_FIND_NO_DUPS
+setopt HIST_IGNORE_SPACE HIST_SAVE_NO_DUPS HIST_REDUCE_BLANKS HIST_VERIFY
+
+DIRSTACKSIZE=20
+setopt AUTO_PUSHD PUSHD_SILENT PUSHD_TO_HOME PUSHD_IGNORE_DUPS CDABLE_VARS AUTO_CD
+unsetopt CORRECT CORRECT_ALL
+
+# ---------- Zinit Loader ----------
+ZINIT_HOME="$HOME/.local/share/zinit/zinit.git"
+source "${ZINIT_HOME}/zinit.zsh"
+
+# Prezto Emulation via Zinit
+zstyle ':prezto:*:*' color 'yes'
+zstyle ':prezto:module:editor' key-bindings 'emacs'
+zstyle ':prezto:module:editor' dot-expansion 'yes'
+zstyle ':prezto:module:terminal' auto-title 'yes'
+
+zinit snippet PZT::modules/environment
+zinit snippet PZT::modules/terminal
+zinit snippet PZT::modules/editor
+zinit snippet PZT::modules/history
+zinit snippet PZT::modules/completion
+
+# Plugins
+ZSH_AUTOSUGGEST_USE_ASYNC=1
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#666666"
+
+zinit light zsh-users/zsh-autosuggestions
+zinit light zsh-users/zsh-history-substring-search
+zinit light zdharma-continuum/fast-syntax-highlighting
+zinit light zsh-users/zsh-completions
+
+# Theme
+zinit ice depth=1; zinit light romkatv/powerlevel10k
+
+# ---------- Aliases ----------
+if command -v eza >/dev/null 2>&1; then
+  alias ls='eza --color=auto --icons=auto'
+  alias ll='eza -alF --color=auto --icons=auto --git'
+  alias la='eza -A --color=auto --icons=auto'
+  alias l='eza -CF --color=auto --icons=auto'
+else
+  alias ls='ls --color=auto -h'
+  alias ll='ls -alF --color=auto -h'
+  alias la='ls -A --color=auto'
+  alias l='ls -CF --color=auto'
+fi
+
+alias ..='cd ..'
+alias ...='cd ../..'
+alias d='dirs -v | head -10'
+alias df='df -h'
+alias du='du -h'
+alias free='free -h'
+
+alias ports='sudo ss -tulpn'
+alias logs='sudo journalctl -xe'
+alias aptup='sudo apt update && apt list --upgradable'
+alias rm='rm -I --preserve-root'
+alias cp='cp -i'
+alias mv='mv -i'
+
+if command -v bat >/dev/null 2>&1; then
+  alias bcat='bat --paging=never --style=plain'
+fi
+
+# Zoxide
+if command -v zoxide >/dev/null 2>&1; then
+  eval "$(zoxide init zsh)"
+  alias cd="z"
+fi
+
+# ---------- FZF ----------
+if command -v fzf >/dev/null 2>&1; then
+  export FZF_DEFAULT_OPTS="--height 40% --layout=reverse --border --info=inline"
+  if command -v fd >/dev/null 2>&1; then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
+  elif command -v fdfind >/dev/null 2>&1; then
+    export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --exclude .git'
+  fi
+  [ -n "${FZF_DEFAULT_COMMAND:-}" ] && export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+
+  if fzf --zsh >/dev/null 2>&1; then
+    eval "$(fzf --zsh)"
+  else
+    [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+  fi
+fi
+
+# ---------- Keybindings ----------
+if (( $+widgets[history-substring-search-up] )); then
+  bindkey '^[[A' history-substring-search-up
+  bindkey '^[[B' history-substring-search-down
+  bindkey '^P'   history-substring-search-up
+  bindkey '^N'   history-substring-search-down
+fi
+bindkey '^ ' autosuggest-accept
+bindkey '^L' clear-screen
+
+# ---------- Functions ----------
+sysinfo() {
+  echo "Hostname : $(hostname -f 2>/dev/null || hostname)"
+  echo "Kernel   : $(uname -r)"
+  echo "Uptime   : $(uptime -p 2>/dev/null || uptime)"
+  echo "Load     : $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo N/A)"
+  echo "Memory   : $(free -h | awk '/^Mem:/ {printf "%s / %s (%.0f%%)", $3, $2, $3/$2*100}')"
+  echo "Disk /   : $(df -Ph / | awk 'NR==2 {printf "%s / %s (%s)", $3, $2, $5}')"
+  echo "IPs      : $(hostname -I 2>/dev/null | tr ' ' '\n' | head -3 | tr '\n' ' ')"
+}
+
+[ -f "$HOME/.local/etc/config.zsh" ] && source "$HOME/.local/etc/config.zsh"
+[ -f "$HOME/.local/etc/local.zsh" ]  && source "$HOME/.local/etc/local.zsh"
+[ -f "$HOME/.zshrc.local" ]          && source "$HOME/.zshrc.local"
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+
+# <<< install.sh managed zshrc <<<

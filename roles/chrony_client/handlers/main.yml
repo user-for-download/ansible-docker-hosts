@@ -1,0 +1,12 @@
+---
+- name: Restart chrony
+  ansible.builtin.systemd:
+    name: chrony
+    state: restarted
+  listen: Chrony configuration changed
+
+- name: Wait for time sync
+  ansible.builtin.command: chronyc waitsync 3 0.1
+  changed_when: false
+  failed_when: false
+  listen: Chrony configuration changed

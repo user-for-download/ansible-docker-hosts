@@ -1,0 +1,36 @@
+---
+- name: Install and Configure Docker Environment
+  hosts: docker
+  become: true
+  become_method: sudo
+  gather_facts: true
+
+  roles:
+    - role: docker_install
+      tags: [docker]
+    - role: docker_compose
+      tags: [compose]
+
+  post_tasks:
+    - name: Verify Docker
+      ansible.builtin.command: docker version --format '{% raw %}{{.Server.Version}}{% endraw %}'
+      changed_when: false
+      tags: [verify]
+
+    - name: Verify Docker Compose
+      ansible.builtin.command: docker compose version --short
+      changed_when: false
+      tags: [verify]
+
+    - name: Verify user group membership
+      ansible.builtin.command: "id -nG {{ target_user }}"
+      changed_when: false
+      register: user_groups
+      tags: [verify]
+
+    - name: Confirm Docker group membership
+      ansible.builtin.assert:
+        that:
+          - "'docker' in user_groups.stdout"
+        fail_msg: "{{ target_user }} is not in the docker group"
+      tags: [verify]

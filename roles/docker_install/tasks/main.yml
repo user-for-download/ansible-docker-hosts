@@ -1,0 +1,20 @@
+---
+- name: System preparation
+  ansible.builtin.include_tasks: prepare.yml
+  tags: [preparation]
+
+- name: Install Docker
+  ansible.builtin.include_tasks: install.yml
+  tags: [install]
+
+- name: Configure Docker
+  ansible.builtin.include_tasks: configure.yml
+  tags: [configure]
+
+- name: Configure Docker users
+  ansible.builtin.include_tasks: users.yml
+  tags: [users]
+
+- name: Validate Docker installation
+  ansible.builtin.include_tasks: validate.yml
+  tags: [validate]

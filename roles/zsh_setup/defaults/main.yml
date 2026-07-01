@@ -1,0 +1,9 @@
+---
+zsh_user: "{{ target_user | default('ubuntu') }}"
+zsh_user_home: "/home/{{ target_user | default('ubuntu') }}"
+zsh_user_group: "{{ target_user | default('ubuntu') }}"
+
+zinit_home: "{{ zsh_user_home }}/.local/share/zinit/zinit.git"
+zprofile_banner_path: "{{ zsh_user_home }}/.local/etc/zprofile-banner.zsh"
+
+zsh_force_p10k_wizard: false

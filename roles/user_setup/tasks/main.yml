@@ -1,0 +1,23 @@
+---
+- name: Create user with sudo access
+  ansible.builtin.user:
+    name: "{{ new_user }}"
+    state: present
+    shell: /bin/bash
+    createhome: true
+    password: "{{ new_user_password | password_hash('sha512') }}"
+    groups: sudo
+    append: true
+
+- name: Add SSH key
+  ansible.posix.authorized_key:
+    user: "{{ new_user }}"
+    key: "{{ lookup('file', ssh_key_file) }}"
+    state: present
+
+- name: Configure passwordless sudo
+  ansible.builtin.copy:
+    content: "{{ new_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    dest: "/etc/sudoers.d/{{ new_user }}"
+    mode: "0440"
+    validate: "visudo -cf %s"

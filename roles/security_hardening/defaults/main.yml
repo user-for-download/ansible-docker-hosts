@@ -1,0 +1,12 @@
+---
+ssh_port: 22
+ssh_allowed_network:
+  - "0.0.0.0/0"
+
+fail2ban_ignore_ips:
+  - "127.0.0.1/8"
+
+fail2ban_bantime: 3600
+fail2ban_findtime: 600
+fail2ban_maxretry: 5
+fail2ban_ssh_maxretry: 3

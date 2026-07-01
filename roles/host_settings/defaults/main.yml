@@ -1,0 +1,23 @@
+---
+disable_ipv6: false
+
+core_dependencies:
+  - curl
+  - git
+  - wget
+  - tree
+  - ca-certificates
+
+host_settings_cloud_init_directories:
+  - /etc/cloud/
+  - /var/lib/cloud/
+
+host_settings_ipv6_disable_params:
+  - net.ipv6.conf.all.disable_ipv6
+  - net.ipv6.conf.default.disable_ipv6
+  - net.ipv6.conf.lo.disable_ipv6
+
+# Automatic updates disabled — patching via scheduled maintenance
+host_settings_update_timers:
+  - apt-daily.timer
+  - apt-daily-upgrade.timer

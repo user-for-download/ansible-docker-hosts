@@ -1,0 +1,11 @@
+---
+- name: Configure Docker Storage on Dedicated Disk
+  hosts: docker
+  become: true
+  become_method: sudo
+  gather_facts: true
+
+  roles:
+    - role: docker_storage
+      tags: [storage]
+      when: configure_docker_storage | default(true) | bool

@@ -1,0 +1,249 @@
+---
+- name: Install required system packages
+  ansible.builtin.apt:
+    name:
+      - zsh
+      - git
+      - curl
+      - wget
+      - ca-certificates
+      - gnupg
+      - htop
+      - ncdu
+      - tree
+      - jq
+      - net-tools
+      - dnsutils
+      - bat
+      - ripgrep
+      - fd-find
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure local user directories exist
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+  loop:
+    - .local/bin
+    - .local/etc
+    - .local/share
+    - .cache
+
+- name: Ensure .ssh directory exists
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/.ssh"
+    state: directory
+    mode: "0700"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+
+- name: Create local configuration placeholders (does not overwrite)
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/{{ item }}"
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+  loop:
+    - .zshrc.local
+    - .local/etc/init.sh
+    - .local/etc/local.zsh
+
+- name: Create config.zsh placeholder
+  ansible.builtin.copy:
+    content: |
+      # Server-specific Zsh configurations
+      # Example environment variables:
+      # export MY_VAR="value"
+    dest: "{{ zsh_user_home }}/.local/etc/config.zsh"
+    mode: "0644"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+    force: false
+
+# --- Symlinks for Debian/Ubuntu quirks ---
+- name: Check if batcat exists
+  ansible.builtin.stat:
+    path: /usr/bin/batcat
+  register: batcat_bin
+
+- name: Symlink batcat -> bat
+  ansible.builtin.file:
+    src: /usr/bin/batcat
+    dest: "{{ zsh_user_home }}/.local/bin/bat"
+    state: link
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+    force: true
+  when: batcat_bin.stat.exists
+
+- name: Check if fdfind exists
+  ansible.builtin.stat:
+    path: /usr/bin/fdfind
+  register: fdfind_bin
+
+- name: Symlink fdfind -> fd
+  ansible.builtin.file:
+    src: /usr/bin/fdfind
+    dest: "{{ zsh_user_home }}/.local/bin/fd"
+    state: link
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+    force: true
+  when: fdfind_bin.stat.exists
+
+# --- FZF from Git (not apt) ---
+- name: Check existing .fzf directory ownership
+  ansible.builtin.stat:
+    path: "{{ zsh_user_home }}/.fzf"
+  register: fzf_dir_stat
+
+- name: Remove root-owned .fzf directory
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/.fzf"
+    state: absent
+  become: true
+  when: fzf_dir_stat.stat.exists and fzf_dir_stat.stat.pw_name == 'root'
+
+- name: Remove apt fzf to prevent conflicts
+  ansible.builtin.apt:
+    name: fzf
+    state: absent
+  failed_when: false
+
+- name: Clone FZF repository
+  become: true
+  become_user: "{{ zsh_user }}"
+  ansible.builtin.git:
+    repo: https://github.com/junegunn/fzf.git
+    dest: "{{ zsh_user_home }}/.fzf"
+    version: master
+    depth: 1
+    update: true
+  register: fzf_clone
+
+- name: Install FZF
+  become: true
+  become_user: "{{ zsh_user }}"
+  ansible.builtin.shell: "{{ zsh_user_home }}/.fzf/install --all --no-update-rc --no-bash --no-fish"
+  args:
+    creates: "{{ zsh_user_home }}/.fzf.zsh"
+  when: fzf_clone.changed or not lookup('file', zsh_user_home + '/.fzf.zsh', errors='ignore')
+
+# --- Zoxide ---
+- name: Check if zoxide is installed
+  ansible.builtin.stat:
+    path: "{{ zsh_user_home }}/.local/bin/zoxide"
+  register: zoxide_bin
+
+- name: Install Zoxide
+  become: true
+  become_user: "{{ zsh_user }}"
+  ansible.builtin.shell: curl -sSf https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
+  args:
+    creates: "{{ zsh_user_home }}/.local/bin/zoxide"
+  environment:
+    HOME: "{{ zsh_user_home }}"
+  when: not zoxide_bin.stat.exists
+
+# --- Zinit ---
+- name: Check existing zinit directory ownership
+  ansible.builtin.stat:
+    path: "{{ zinit_home }}"
+  register: zinit_dir_stat
+
+- name: Remove root-owned zinit directory
+  ansible.builtin.file:
+    path: "{{ zinit_home }}"
+    state: absent
+  become: true
+  when: zinit_dir_stat.stat.exists and zinit_dir_stat.stat.pw_name == 'root'
+
+- name: Ensure zinit parent directory exists
+  ansible.builtin.file:
+    path: "{{ zinit_home | dirname }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+
+- name: Clone Zinit
+  become: true
+  become_user: "{{ zsh_user }}"
+  ansible.builtin.git:
+    repo: https://github.com/zdharma-continuum/zinit.git
+    dest: "{{ zinit_home }}"
+    version: main
+    depth: 1
+    update: true
+
+# --- Backup existing .zshrc ---
+- name: Backup existing .zshrc
+  ansible.builtin.copy:
+    src: "{{ zsh_user_home }}/.zshrc"
+    dest: "{{ zsh_user_home }}/.zshrc.backup.{{ ansible_date_time.epoch }}"
+    remote_src: true
+    force: true
+  register: zshrc_backup
+  failed_when: false
+
+# --- Deploy .zshrc ---
+- name: Deploy .zshrc
+  ansible.builtin.template:
+    src: zshrc.j2
+    dest: "{{ zsh_user_home }}/.zshrc"
+    mode: "0644"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+    backup: true
+
+# --- Deploy .zprofile with banner ---
+- name: Create zprofile banner
+  ansible.builtin.copy:
+    content: |
+      if [[ -o interactive && -n "${SSH_CONNECTION:-}" ]]; then
+        echo -e "\n  \e[36mConnected from:\e[0m ${SSH_CONNECTION%% *}"
+        echo -e "  \e[36mServer:\e[0m $(hostname -f 2>/dev/null || hostname)"
+        echo -e "  \e[36mUptime:\e[0m $(uptime -p 2>/dev/null || uptime | sed 's/.*up //;s/,.*user.*//')"
+      fi
+    dest: "{{ zprofile_banner_path }}"
+    mode: "0644"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+
+- name: Deploy .zprofile
+  ansible.builtin.template:
+    src: zprofile.j2
+    dest: "{{ zsh_user_home }}/.zprofile"
+    mode: "0644"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
+    backup: true
+
+# --- P10k cleanup ---
+- name: Remove existing P10k configs to force wizard on next login
+  ansible.builtin.file:
+    path: "{{ zsh_user_home }}/{{ item }}"
+    state: absent
+  loop:
+    - .p10k.zsh
+    - .p10k-minimal.zsh
+  when: zsh_force_p10k_wizard | bool
+
+# --- Change default shell ---
+- name: Change default shell to Zsh
+  ansible.builtin.user:
+    name: "{{ zsh_user }}"
+    shell: /bin/zsh
+  register: shell_changed
+
+- name: Notify about shell change
+  ansible.builtin.debug:
+    msg: "Shell changed to zsh for {{ zsh_user }}. Log out and back in to activate."
+  when: shell_changed.changed

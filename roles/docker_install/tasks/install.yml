@@ -1,0 +1,42 @@
+---
+- name: Add Docker GPG key
+  ansible.builtin.get_url:
+    url: "{{ docker_apt_gpg_key }}"
+    dest: /usr/share/keyrings/docker-archive-keyring.asc
+    mode: "0644"
+  register: gpg_download
+
+- name: De-armor GPG key
+  ansible.builtin.command:
+    cmd: >-
+      gpg --batch --yes --dearmor
+      -o /usr/share/keyrings/docker-archive-keyring.gpg
+      /usr/share/keyrings/docker-archive-keyring.asc
+  when: gpg_download.changed
+  changed_when: true
+
+- name: Add Docker repository
+  ansible.builtin.apt_repository:
+    repo: "{{ docker_apt_repository }}"
+    state: present
+    filename: docker
+    update_cache: true
+
+- name: Install Docker (pinned version)
+  ansible.builtin.apt:
+    name: "{{ item }}={{ docker_version }}*"
+    state: present
+    allow_downgrade: true
+  loop: "{{ docker_versioned_packages }}"
+  when: docker_version != 'latest'
+
+- name: Install Docker (latest)
+  ansible.builtin.apt:
+    name: "{{ docker_versioned_packages }}"
+    state: present
+  when: docker_version == 'latest'
+
+- name: Install supporting packages
+  ansible.builtin.apt:
+    name: "{{ docker_unversioned_packages }}"
+    state: present

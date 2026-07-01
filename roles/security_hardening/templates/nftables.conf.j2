@@ -1,0 +1,37 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+
+flush ruleset
+
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        # Allow established/related connections
+        ct state established,related accept
+
+        # Allow loopback
+        iif lo accept
+
+        # Allow ICMP/ICMPv6
+        ip protocol icmp accept
+        ip6 nexthdr icmpv6 accept
+
+{% for network in ssh_allowed_network %}
+        # SSH from {{ network }}
+        ip saddr {{ network }} tcp dport {{ ssh_port }} accept
+        ip6 saddr {{ network }} tcp dport {{ ssh_port }} accept
+{% endfor %}
+
+        # Log and drop everything else
+        log prefix "nft-drop: " flags all counter drop
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}

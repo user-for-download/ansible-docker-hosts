@@ -1,0 +1,8 @@
+---
+- name: Add new sudo user and configure SSH key
+  hosts: ubuntu
+  become: true
+
+  roles:
+    # - user_setup
+    - zsh_setup

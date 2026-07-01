@@ -1,0 +1,46 @@
+---
+- name: Verify Docker is installed
+  ansible.builtin.command: which docker
+  register: docker_installed
+  changed_when: false
+  failed_when: docker_installed.rc != 0
+
+- name: Verify target device exists
+  block:
+    - name: Check device
+      ansible.builtin.stat:
+        path: "/dev/{{ device2_hdd_docker }}"
+      register: device_stat
+
+    - name: Fail if device missing
+      ansible.builtin.fail:
+        msg: "Device /dev/{{ device2_hdd_docker }} does not exist"
+      when: not device_stat.stat.exists
+
+    - name: Verify device type
+      ansible.builtin.command: lsblk -ndo TYPE "/dev/{{ device2_hdd_docker }}"
+      register: device_type
+      changed_when: false
+
+    - name: Assert device is a disk
+      ansible.builtin.assert:
+        that:
+          - device_type.stdout == "disk"
+        fail_msg: "/dev/{{ device2_hdd_docker }} is not a disk"
+
+- name: Check existing partitions
+  block:
+    - name: Count partitions
+      ansible.builtin.shell: |
+        lsblk -nlo NAME,TYPE "/dev/{{ device2_hdd_docker }}" | grep -c part || true
+      register: existing_partitions
+      changed_when: false
+
+    - name: Refuse to wipe without confirmation
+      ansible.builtin.fail:
+        msg: >-
+          Device /dev/{{ device2_hdd_docker }} has {{ existing_partitions.stdout | trim }}
+          existing partition(s). Set docker_storage_wipe_disk=true to proceed.
+      when:
+        - existing_partitions.stdout | trim | int > 0
+        - not (docker_storage_wipe_disk | bool)

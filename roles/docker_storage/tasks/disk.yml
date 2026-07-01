@@ -1,0 +1,50 @@
+---
+- name: Prepare disk partitions
+  block:
+    - name: Get current partition table
+      community.general.parted:
+        device: "/dev/{{ device2_hdd_docker }}"
+        unit: MiB
+      register: disk_info
+
+    - name: Remove existing partitions
+      community.general.parted:
+        device: "/dev/{{ device2_hdd_docker }}"
+        number: "{{ item.num }}"
+        state: absent
+      loop: "{{ disk_info.partitions }}"
+      when: disk_info.partitions | length > 0
+
+    - name: Create GPT partition
+      community.general.parted:
+        device: "/dev/{{ device2_hdd_docker }}"
+        number: 1
+        state: present
+        part_end: 100%
+        fs_type: ext4
+        label: gpt
+
+- name: Create filesystem
+  block:
+    - name: Wait for partition device
+      ansible.builtin.wait_for:
+        path: "{{ parted_hdd_docker }}"
+        state: present
+        timeout: 30
+
+    - name: Create ext4 filesystem
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ parted_hdd_docker }}"
+        opts: "-L DOCKER_DATA"
+        force: false
+
+    - name: Get filesystem UUID
+      ansible.builtin.command: blkid -s UUID -o value {{ parted_hdd_docker }}
+      register: fs_uuid
+      changed_when: false
+
+    - name: Store UUID
+      ansible.builtin.set_fact:
+        docker_partition_uuid: "{{ fs_uuid.stdout }}"
+        cacheable: true

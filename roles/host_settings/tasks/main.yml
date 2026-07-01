@@ -1,0 +1,153 @@
+---
+# System Compatibility
+- name: Verify system compatibility
+  tags: always
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version('20.04', '>=')
+    fail_msg: "Requires Ubuntu 20.04+"
+
+# Cloud-Init Removal
+- name: Remove cloud-init
+  tags: [cloud-init, cleanup]
+  block:
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Purge cloud-init
+      ansible.builtin.apt:
+        name: cloud-init
+        state: absent
+        purge: true
+        autoremove: true
+      when: "'cloud-init' in ansible_facts.packages"
+
+    - name: Remove cloud-init directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ host_settings_cloud_init_directories }}"
+
+# Swap Management
+- name: Disable swap
+  tags: [swap, memory]
+  block:
+    - name: Check swap status
+      ansible.builtin.command: swapon --show --noheadings
+      register: swap_status
+      changed_when: false
+      failed_when: false
+
+    - name: Turn off active swap
+      ansible.builtin.command: swapoff -a
+      when: swap_status.stdout | length > 0
+      changed_when: true
+
+    - name: Remove swap from fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: "^[^#].*\\s+swap\\s+"
+        state: absent
+
+# Automatic Updates
+- name: Disable automatic update timers
+  tags: [updates, maintenance]
+  block:
+    - name: Stop and mask update timers
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+        masked: true
+      loop: "{{ host_settings_update_timers }}"
+      failed_when: false
+
+    - name: Remove auto-upgrade config
+      ansible.builtin.file:
+        path: /etc/apt/apt.conf.d/20auto-upgrades
+        state: absent
+
+# Package Management
+- name: Manage packages
+  tags: [packages]
+  block:
+    - name: Update cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      register: apt_action
+      retries: 3
+      delay: 10
+      until: apt_action is success
+
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: dist
+        force_apt_get: true
+      register: system_upgraded
+
+    - name: Install core dependencies
+      ansible.builtin.apt:
+        name: "{{ core_dependencies }}"
+        state: present
+
+    - name: Clean up
+      ansible.builtin.apt:
+        autoclean: true
+        autoremove: true
+
+# IPv6 Configuration
+- name: Disable IPv6
+  tags: [network, ipv6]
+  when: disable_ipv6 | bool
+  block:
+    - name: Disable IPv6 via sysctl
+      ansible.posix.sysctl:
+        name: "{{ item }}"
+        value: "1"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-disable-ipv6.conf
+        reload: true
+      loop: "{{ host_settings_ipv6_disable_params }}"
+
+    - name: Check if ipv6.disable=1 is already in GRUB
+      ansible.builtin.command:
+        cmd: grep -q 'ipv6.disable=1' /etc/default/grub
+      register: grub_ipv6_check
+      changed_when: false
+      failed_when: false
+
+    - name: Add ipv6.disable=1 to GRUB cmdline
+      ansible.builtin.replace:
+        path: /etc/default/grub
+        regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT=".*)"'
+        replace: '\1 ipv6.disable=1"'
+      when: grub_ipv6_check.rc != 0
+      notify: Update grub
+
+# Timezone
+- name: Set timezone
+  tags: [timezone]
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+# Reboot
+- name: Reboot if required
+  tags: [reboot]
+  block:
+    - name: Check reboot-required flag
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Reboot if needed
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        pre_reboot_delay: 10
+        post_reboot_delay: 30
+      when: >-
+        reboot_required_file.stat.exists or
+        (system_upgraded.changed | default(false))

@@ -1,0 +1,16 @@
+---
+- name: Pre-flight checks
+  ansible.builtin.include_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Prepare disk
+  ansible.builtin.include_tasks: disk.yml
+  tags: [disk]
+
+- name: Configure Docker storage
+  ansible.builtin.include_tasks: configure.yml
+  tags: [storage]
+
+- name: Validate configuration
+  ansible.builtin.include_tasks: validate.yml
+  tags: [validate]

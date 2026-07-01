@@ -1,0 +1,100 @@
+---
+- name: Configure UFW firewall
+  tags: [security, firewall]
+  block:
+    - name: Install UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Set default policies
+      community.general.ufw:
+        direction: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { direction: "incoming", policy: "deny" }
+        - { direction: "outgoing", policy: "allow" }
+
+    - name: Allow SSH from trusted networks
+      community.general.ufw:
+        rule: allow
+        port: "{{ ssh_port | string }}"
+        proto: tcp
+        src: "{{ item }}"
+        comment: "SSH from {{ item }}"
+      loop: "{{ ssh_allowed_network }}"
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+
+# - name: Configure nftables firewall
+#   tags: [security, firewall]
+#   block:
+#     - name: Install nftables
+#       ansible.builtin.apt:
+#         name: nftables
+#         state: present
+#
+#     - name: Deploy nftables configuration
+#       ansible.builtin.template:
+#         src: nftables.conf.j2
+#         dest: /etc/nftables.conf
+#         owner: root
+#         group: root
+#         mode: "0640"
+#       notify: Restart nftables
+#
+#     - name: Enable and start nftables
+#       ansible.builtin.systemd:
+#         name: nftables
+#         enabled: true
+#         state: started
+
+- name: Configure Fail2Ban
+  tags: [security, fail2ban]
+  block:
+    - name: Install Fail2Ban
+      ansible.builtin.apt:
+        name: fail2ban
+        state: present
+
+    - name: Deploy jail configuration
+      ansible.builtin.template:
+        src: jail.local.j2
+        dest: /etc/fail2ban/jail.local
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart fail2ban
+
+    - name: Enable and start Fail2Ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        enabled: true
+        state: started
+
+- name: Verify security services
+  tags: [security, verify]
+  block:
+    - name: Check UFW status
+      ansible.builtin.command: ufw status verbose
+      changed_when: false
+      register: ufw_status
+
+#     - name: Check nftables rules
+#       ansible.builtin.command: nft list ruleset
+#       changed_when: false
+#       register: nft_status
+
+    - name: Check Fail2Ban status
+      ansible.builtin.command: fail2ban-client status sshd
+      changed_when: false
+      register: f2b_status
+      failed_when: false
+
+    - name: Display security status
+      ansible.builtin.debug:
+        msg:
+          - "{{ ufw_status.stdout_lines }}"
+          - "{{ f2b_status.stdout_lines | default(['Fail2Ban not yet active']) }}"

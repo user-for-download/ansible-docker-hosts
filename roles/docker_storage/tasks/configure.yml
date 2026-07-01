@@ -1,0 +1,119 @@
+---
+- name: Stop Docker safely
+  block:
+    - name: Check Docker status
+      ansible.builtin.systemd:
+        name: docker
+      register: docker_status
+
+    - name: Stop running containers
+      ansible.builtin.command: docker stop $(docker ps -q)
+      when: docker_status.status.ActiveState == "active"
+      failed_when: false
+      changed_when: false
+
+    - name: Stop Docker service
+      ansible.builtin.systemd:
+        name: docker
+        state: stopped
+      register: docker_stopped
+      until: docker_stopped.status.ActiveState == "inactive"
+      retries: "{{ docker_service_retries }}"
+      delay: 5
+
+    - name: Stop Docker socket
+      ansible.builtin.systemd:
+        name: docker.socket
+        state: stopped
+      failed_when: false
+
+- name: Migrate Docker data
+  block:
+    - name: Check if Docker directory exists
+      ansible.builtin.stat:
+        path: "{{ docker_data_path }}"
+      register: docker_dir
+
+    - name: Ensure rsync is installed
+      ansible.builtin.apt:
+        name: rsync
+        state: present
+
+    - name: Move existing Docker directory
+      ansible.builtin.command: mv {{ docker_data_path }} {{ docker_data_path }}.old
+      args:
+        removes: "{{ docker_data_path }}"
+        creates: "{{ docker_data_path }}.old"
+      when: docker_dir.stat.exists
+      register: docker_dir_moved
+
+- name: Configure mount point
+  block:
+    - name: Create Docker directory
+      ansible.builtin.file:
+        path: "{{ docker_data_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0711"
+
+    - name: Mount Docker filesystem
+      ansible.posix.mount:
+        path: "{{ docker_data_path }}"
+        src: "UUID={{ docker_partition_uuid }}"
+        fstype: ext4
+        opts: "{{ mount_options }}"
+        dump: "0"
+        passno: "2"
+        state: mounted
+
+- name: Restore Docker data
+  when: docker_dir_moved is defined and docker_dir_moved is changed
+  block:
+    - name: Copy old Docker data
+      ansible.builtin.command: >-
+        rsync -aHAX {{ docker_data_path }}.old/ {{ docker_data_path }}/
+      register: data_restored
+      failed_when: data_restored.rc not in [0, 23, 24]
+      changed_when: data_restored.rc == 0
+
+- name: Configure Docker daemon
+  block:
+    - name: Ensure Docker config directory exists
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Deploy daemon.json with data-root
+      ansible.builtin.template:
+        src: daemon.json.j2
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      notify: Restart docker (storage)
+
+- name: Start Docker
+  block:
+    - name: Start Docker service
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+        daemon_reload: true
+      register: docker_started
+      until: docker_started.status.ActiveState == "active"
+      retries: "{{ docker_service_retries }}"
+      delay: 5
+
+    - name: Wait for Docker to be ready
+      ansible.builtin.command: docker info
+      register: docker_ready
+      until: docker_ready.rc == 0
+      retries: "{{ docker_service_retries }}"
+      delay: 5
+      changed_when: false
