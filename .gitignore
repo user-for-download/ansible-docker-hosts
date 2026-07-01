@@ -9,7 +9,6 @@ __pycache__/
 
 # Ansible
 *.retry
-*.pyc
 
 # OS
 .DS_Store
@@ -18,3 +17,9 @@ Thumbs.db
 # Vault password file
 .vault_pass
 vault-password.txt
+
+# Config files (use *.yml.example as templates)
+group_vars/all.yml
+group_vars/ubuntu.yml
+group_vars/docker.yml
+inventory.yml

@@ -1,3 +1,5 @@
+# group_vars/ubuntu.yml.example
+# Copy to ubuntu.yml and fill in your values
 ---
 # Host Settings
 disable_ipv6: true

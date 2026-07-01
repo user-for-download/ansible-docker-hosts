@@ -1,3 +1,5 @@
+# group_vars/docker.yml.example
+# Copy to docker.yml and fill in your values
 ---
 docker_edition: "ce"
 docker_channel: "stable"
