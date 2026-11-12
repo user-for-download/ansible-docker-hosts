@@ -2,7 +2,6 @@
 - name: System Preparation and Optimization
   hosts: ubuntu
   become: true
-  become_method: sudo
   gather_facts: true
 
   pre_tasks:
@@ -18,28 +17,48 @@
       tags: [system, base]
     - role: chrony_client
       tags: [ntp, chrony]
-    - role: security_hardening
-      tags: [security, hardening]
+    # - role: security_hardening
+    #   tags: [security, hardening]
 
   post_tasks:
-    - name: Verify chrony synchronization
-      ansible.builtin.command: chronyc tracking
+    - name: Apply pending handlers
+      ansible.builtin.meta: flush_handlers
+      tags: [always]
+
+    - name: Wait for NTP synchronization
+      ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+      register: ntp_synchronized
+      until: ntp_synchronized.stdout | trim == 'yes'
+      retries: 24
+      delay: 5
       changed_when: false
+      failed_when: false
+      when: not ansible_check_mode
       tags: [ntp, verify]
 
-    - name: Verify UFW status
-      ansible.builtin.command: ufw status verbose
-      changed_when: false
-      register: ufw_status
-      tags: [security, verify]
+    - name: Verify NTP synchronization
+      ansible.builtin.assert:
+        that:
+          - ntp_synchronized.stdout | trim == 'yes'
+        fail_msg: >-
+          NTP is not synchronized. Check `chronyc sources -v` and the
+          configured servers ({{ ntp_servers | join(', ') }}).
+      when: not ansible_check_mode
+      tags: [ntp, verify]
 
-#     - name: Verify nftables status
-#       ansible.builtin.command: nft list ruleset
-#       changed_when: false
-#       register: nft_status
-#       tags: [security, verify]
+    # - name: Verify UFW status
+    #   ansible.builtin.command: ufw status verbose
+    #   changed_when: false
+    #   register: ufw_status
+    #   tags: [security, verify]
 
-    - name: Display status
-      ansible.builtin.debug:
-        msg: "{{ ufw_status.stdout_lines }}"
-      tags: [verify]
+    # - name: Verify nftables status
+    #   ansible.builtin.command: nft list ruleset
+    #   changed_when: false
+    #   register: nft_status
+    #   tags: [security, verify]
+
+    # - name: Display status
+    #   ansible.builtin.debug:
+    #     msg: "{{ ufw_status.stdout_lines }}"
+    #   tags: [verify]

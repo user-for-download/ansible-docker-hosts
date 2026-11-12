@@ -1,0 +1,2 @@
+---
+netplan_remove_cloud_init: true

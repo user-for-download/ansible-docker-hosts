@@ -1,0 +1,151 @@
+---
+- name: Configure IPv4-only DNS resolution
+  tags: [dns, network]
+  block:
+    - name: Validate DNS settings
+      ansible.builtin.assert:
+        that:
+          - dns_settings_servers | length > 0
+          - dns_settings_listen_address is match('^127\.')
+          - dns_settings_servers | select('match', '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') | list | length == dns_settings_servers | length
+        fail_msg: >-
+          dns_settings_servers must contain IPv4 addresses only and
+          dns_settings_listen_address must be a loopback address.
+
+    - name: Install DNS resolver packages
+      ansible.builtin.apt:
+        name: "{{ dns_settings_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Ensure resolver configuration directory exists
+      ansible.builtin.file:
+        path: "{{ dns_settings_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Deploy resolver configuration
+      ansible.builtin.template:
+        src: dnsmasq.conf.j2
+        dest: "{{ dns_settings_config_dir }}/{{ dns_settings_config_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+        validate: dnsmasq --test --conf-file=%s
+      notify: Restart local DNS resolver
+
+    - name: Keep the resolver package from touching resolv.conf
+      ansible.builtin.lineinfile:
+        path: /etc/default/dnsmasq
+        regexp: '^#?IGNORE_RESOLVCONF='
+        line: "IGNORE_RESOLVCONF=yes"
+        mode: "0644"
+
+    - name: Keep the resolver package from registering with resolvconf
+      ansible.builtin.lineinfile:
+        path: /etc/default/dnsmasq
+        regexp: '^#?DNSMASQ_EXCEPT='
+        line: 'DNSMASQ_EXCEPT="lo"'
+        mode: "0644"
+
+    - name: Deploy systemd-resolved configuration
+      ansible.builtin.template:
+        src: resolved.conf.j2
+        dest: /etc/systemd/resolved.conf.d/99-ansible-dns.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Start and enable the local DNS resolver
+      ansible.builtin.systemd:
+        name: dnsmasq
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Stop and disable systemd-resolved
+      ansible.builtin.systemd:
+        name: systemd-resolved
+        state: stopped
+        enabled: false
+        daemon_reload: true
+
+    - name: Disable systemd-resolved activation sockets
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - systemd-resolved.socket
+        - systemd-resolved-monitor.socket
+        - systemd-resolved-varlink.socket
+      failed_when: false
+
+    - name: Check current resolv.conf
+      ansible.builtin.stat:
+        path: /etc/resolv.conf
+      register: resolv_conf_stat
+
+    - name: Remove resolv.conf symlink managed by systemd-resolved
+      ansible.builtin.file:
+        path: /etc/resolv.conf
+        state: absent
+      when: resolv_conf_stat.stat.islnk | default(false)
+
+    - name: Configure system resolver
+      ansible.builtin.template:
+        src: resolv.conf.j2
+        dest: /etc/resolv.conf
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+
+    - name: Verify IPv4 resolution
+      ansible.builtin.command:
+        cmd: dig +short +time=5 +tries=2 @{{ dns_settings_listen_address }} {{ dns_settings_test_domain }} A
+      register: dns_ipv4_answer
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify IPv6 answers are filtered
+      ansible.builtin.command:
+        cmd: dig +short +time=5 +tries=2 @{{ dns_settings_listen_address }} {{ dns_settings_test_domain }} AAAA
+      register: dns_ipv6_answer
+      changed_when: false
+      when:
+        - not ansible_check_mode
+        - dns_settings_filter_aaaa | bool
+
+    - name: Check DNS resolution results
+      ansible.builtin.assert:
+        that:
+          - dns_ipv4_answer.stdout | trim | length > 0
+          - dns_ipv6_answer.stdout | trim | length == 0
+        fail_msg: >-
+          Local resolver did not return the expected results.
+          A: {{ dns_ipv4_answer.stdout | default('') }}
+          AAAA: {{ dns_ipv6_answer.stdout | default('') }}
+        success_msg: "Local resolver returns IPv4 addresses only."
+      when: not ansible_check_mode
+
+    - name: Verify system resolution returns IPv4 only
+      ansible.builtin.command:
+        cmd: getent ahosts {{ dns_settings_test_domain }}
+      register: dns_system_hosts
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Check system resolution results
+      ansible.builtin.assert:
+        that:
+          - dns_system_hosts.stdout | length > 0
+          - "':' not in dns_system_hosts.stdout"
+        fail_msg: >-
+          System resolver returned IPv6 addresses:
+          {{ dns_system_hosts.stdout | default('') }}
+        success_msg: "System resolver returns IPv4 addresses only."
+      when: not ansible_check_mode

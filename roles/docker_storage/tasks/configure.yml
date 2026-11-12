@@ -1,16 +1,32 @@
 ---
+- name: Check if old Docker directory exists
+  ansible.builtin.stat:
+    path: "{{ docker_data_path }}.old"
+  register: docker_old_dir
+
 - name: Stop Docker safely
+  when: not docker_data_is_mount | bool
   block:
     - name: Check Docker status
       ansible.builtin.systemd:
         name: docker
       register: docker_status
 
-    - name: Stop running containers
-      ansible.builtin.command: docker stop $(docker ps -q)
-      when: docker_status.status.ActiveState == "active"
-      failed_when: false
+    - name: Get running containers
+      ansible.builtin.command: docker ps -q
+      register: running_containers
       changed_when: false
+      when: docker_status.status.ActiveState == "active"
+
+    - name: Stop running containers
+      ansible.builtin.command: >-
+        docker stop {{ running_containers.stdout_lines | join(' ') }}
+      when:
+        - docker_status.status.ActiveState == "active"
+        - (running_containers.stdout_lines | default([])) | length > 0
+      register: containers_stopped
+      failed_when: false
+      changed_when: containers_stopped.rc == 0
 
     - name: Stop Docker service
       ansible.builtin.systemd:
@@ -28,24 +44,27 @@
       failed_when: false
 
 - name: Migrate Docker data
+  when: not docker_data_is_mount | bool
   block:
     - name: Check if Docker directory exists
       ansible.builtin.stat:
         path: "{{ docker_data_path }}"
       register: docker_dir
 
-    - name: Ensure rsync is installed
-      ansible.builtin.apt:
-        name: rsync
-        state: present
-
     - name: Move existing Docker directory
-      ansible.builtin.command: mv {{ docker_data_path }} {{ docker_data_path }}.old
-      args:
-        removes: "{{ docker_data_path }}"
-        creates: "{{ docker_data_path }}.old"
-      when: docker_dir.stat.exists
+      ansible.builtin.command:
+        cmd: mv {{ docker_data_path }} {{ docker_data_path }}.old
+      when:
+        - docker_dir.stat.exists
+        - not docker_old_dir.stat.exists
+      changed_when: true
       register: docker_dir_moved
+
+- name: Record whether Docker data must be restored
+  ansible.builtin.set_fact:
+    docker_restore_needed: >-
+      {{ docker_old_dir.stat.exists or
+         (docker_dir_moved is defined and docker_dir_moved is changed) }}
 
 - name: Configure mount point
   block:
@@ -68,9 +87,9 @@
         state: mounted
 
 - name: Restore Docker data
-  when: docker_dir_moved is defined and docker_dir_moved is changed
+  when: docker_restore_needed | default(false) | bool
   block:
-    - name: Copy old Docker data
+    - name: Copy old Docker data  # noqa: command-instead-of-module
       ansible.builtin.command: >-
         rsync -aHAX {{ docker_data_path }}.old/ {{ docker_data_path }}/
       register: data_restored

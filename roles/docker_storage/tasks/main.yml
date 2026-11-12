@@ -1,4 +1,47 @@
 ---
+- name: Validate storage device variables
+  ansible.builtin.assert:
+    that:
+      - device2_hdd_docker | default('') | length > 0
+      - parted_hdd_docker | default('') | length > 0
+      - parted_hdd_docker is match('^/dev/' ~ device2_hdd_docker ~ 'p?[0-9]+$')
+    fail_msg: >-
+      Set device2_hdd_docker (for example "sdb") and parted_hdd_docker
+      (for example "/dev/sdb1"). The partition must belong to the disk.
+  tags: [always]
+
+- name: Detect existing Docker data mount
+  ansible.builtin.command:
+    cmd: findmnt -n -o TARGET,SOURCE --target {{ docker_data_path }}
+  register: docker_mount_info
+  changed_when: false
+  failed_when: false
+  tags: [always]
+
+- name: Record Docker mount state
+  ansible.builtin.set_fact:
+    docker_data_is_mount: >-
+      {{ docker_mount_info.rc == 0 and
+         (docker_mount_info.stdout | trim | length > 0) and
+         ((docker_mount_info.stdout | trim).split() | length >= 2) and
+         ((docker_mount_info.stdout | trim).split()[0] == docker_data_path) }}
+    docker_partition_mounted: >-
+      {{ docker_mount_info.rc == 0 and
+         (docker_mount_info.stdout | trim | length > 0) and
+         ((docker_mount_info.stdout | trim).split() | length >= 2) and
+         ((docker_mount_info.stdout | trim).split()[0] == docker_data_path) and
+         ((docker_mount_info.stdout | trim).split()[1] == parted_hdd_docker) }}
+  tags: [always]
+
+- name: Refuse a Docker data path mounted from another device
+  ansible.builtin.assert:
+    that:
+      - not (docker_data_is_mount | bool) or (docker_partition_mounted | bool)
+    fail_msg: >-
+      {{ docker_data_path }} is mounted from a device other than
+      {{ parted_hdd_docker }}. Unmount it or choose another docker_data_path.
+  tags: [always]
+
 - name: Pre-flight checks
   ansible.builtin.include_tasks: preflight.yml
   tags: [preflight]

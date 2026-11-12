@@ -1,5 +1,6 @@
 ---
 - name: Prepare disk partitions
+  when: not docker_partition_mounted | bool
   block:
     - name: Get current partition table
       community.general.parted:
@@ -12,8 +13,10 @@
         device: "/dev/{{ device2_hdd_docker }}"
         number: "{{ item.num }}"
         state: absent
-      loop: "{{ disk_info.partitions }}"
-      when: disk_info.partitions | length > 0
+      loop: "{{ disk_info.partitions | default([], true) }}"
+      when:
+        - docker_storage_wipe_disk | bool
+        - disk_info.partitions | default([], true) | length > 0
 
     - name: Create GPT partition
       community.general.parted:
@@ -25,6 +28,7 @@
         label: gpt
 
 - name: Create filesystem
+  when: not docker_partition_mounted | bool
   block:
     - name: Wait for partition device
       ansible.builtin.wait_for:
@@ -39,12 +43,12 @@
         opts: "-L DOCKER_DATA"
         force: false
 
-    - name: Get filesystem UUID
-      ansible.builtin.command: blkid -s UUID -o value {{ parted_hdd_docker }}
-      register: fs_uuid
-      changed_when: false
+- name: Get filesystem UUID
+  ansible.builtin.command: blkid -s UUID -o value {{ parted_hdd_docker }}
+  register: fs_uuid
+  changed_when: false
 
-    - name: Store UUID
-      ansible.builtin.set_fact:
-        docker_partition_uuid: "{{ fs_uuid.stdout }}"
-        cacheable: true
+- name: Store UUID
+  ansible.builtin.set_fact:
+    docker_partition_uuid: "{{ fs_uuid.stdout }}"
+    cacheable: true

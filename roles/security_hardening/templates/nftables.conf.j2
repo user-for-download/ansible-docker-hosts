@@ -19,8 +19,11 @@ table inet filter {
 
 {% for network in ssh_allowed_network %}
         # SSH from {{ network }}
-        ip saddr {{ network }} tcp dport {{ ssh_port }} accept
+{% if ':' in network %}
         ip6 saddr {{ network }} tcp dport {{ ssh_port }} accept
+{% else %}
+        ip saddr {{ network }} tcp dport {{ ssh_port }} accept
+{% endif %}
 {% endfor %}
 
         # Log and drop everything else

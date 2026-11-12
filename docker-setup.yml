@@ -2,7 +2,6 @@
 - name: Install and Configure Docker Environment
   hosts: docker
   become: true
-  become_method: sudo
   gather_facts: true
 
   roles:
@@ -31,6 +30,7 @@
     - name: Confirm Docker group membership
       ansible.builtin.assert:
         that:
-          - "'docker' in user_groups.stdout"
+          - "'docker' in user_groups.stdout.split()"
         fail_msg: "{{ target_user }} is not in the docker group"
+      when: not ansible_check_mode
       tags: [verify]

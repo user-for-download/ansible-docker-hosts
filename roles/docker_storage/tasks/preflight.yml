@@ -1,6 +1,14 @@
 ---
+- name: Install disk utilities
+  ansible.builtin.package:
+    name:
+      - parted
+      - e2fsprogs
+      - rsync
+    state: present
+
 - name: Verify Docker is installed
-  ansible.builtin.command: which docker
+  ansible.builtin.command: docker --version
   register: docker_installed
   changed_when: false
   failed_when: docker_installed.rc != 0
@@ -28,19 +36,52 @@
           - device_type.stdout == "disk"
         fail_msg: "/dev/{{ device2_hdd_docker }} is not a disk"
 
-- name: Check existing partitions
-  block:
-    - name: Count partitions
-      ansible.builtin.shell: |
-        lsblk -nlo NAME,TYPE "/dev/{{ device2_hdd_docker }}" | grep -c part || true
-      register: existing_partitions
-      changed_when: false
+- name: Refuse a Docker data path mounted from another device
+  ansible.builtin.assert:
+    that:
+      - not (docker_data_is_mount | bool) or (docker_partition_mounted | bool)
+    fail_msg: >-
+      {{ docker_data_path }} is already mounted from a device other than
+      {{ parted_hdd_docker }}. Unmount it or choose another docker_data_path.
 
-    - name: Refuse to wipe without confirmation
-      ansible.builtin.fail:
-        msg: >-
-          Device /dev/{{ device2_hdd_docker }} has {{ existing_partitions.stdout | trim }}
-          existing partition(s). Set docker_storage_wipe_disk=true to proceed.
-      when:
-        - existing_partitions.stdout | trim | int > 0
-        - not (docker_storage_wipe_disk | bool)
+- name: List mounts on target disk
+  ansible.builtin.command: lsblk -nlo MOUNTPOINT "/dev/{{ device2_hdd_docker }}"
+  register: docker_disk_mounts
+  changed_when: false
+
+- name: Refuse unexpected mounts on target disk
+  ansible.builtin.assert:
+    that:
+      - >-
+        docker_disk_mounts.stdout_lines | map('trim') | select |
+        reject('equalto', docker_data_path) | list | length == 0
+    fail_msg: >-
+      /dev/{{ device2_hdd_docker }} has mounted filesystems other than
+      {{ docker_data_path }}. Unmount them before continuing.
+
+- name: Read disk layout
+  ansible.builtin.command:
+    cmd: >-
+      lsblk -J -o NAME,TYPE,FSTYPE,MOUNTPOINT
+      "/dev/{{ device2_hdd_docker }}"
+  register: docker_disk_layout
+  changed_when: false
+
+- name: Parse disk layout
+  ansible.builtin.set_fact:
+    docker_disk_partitions: >-
+      {{ ((docker_disk_layout.stdout | from_json).blockdevices | first).children
+         | default([], true) }}
+
+- name: Refuse unexpected partition layout without wipe flag
+  ansible.builtin.assert:
+    that:
+      - (docker_storage_wipe_disk | bool) or
+        (docker_disk_partitions | length == 0) or
+        (docker_disk_partitions | length == 1 and
+         docker_disk_partitions[0].name == (parted_hdd_docker | basename) and
+         (docker_disk_partitions[0].fstype | default('', true) in ['', 'ext4']))
+    fail_msg: >-
+      /dev/{{ device2_hdd_docker }} already contains partitions that are not
+      the expected Docker partition ({{ parted_hdd_docker }}, ext4).
+      Set docker_storage_wipe_disk=true only if you intend to erase the disk.

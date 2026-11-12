@@ -2,7 +2,6 @@
 - name: Configure Docker Storage on Dedicated Disk
   hosts: docker
   become: true
-  become_method: sudo
   gather_facts: true
 
   roles:

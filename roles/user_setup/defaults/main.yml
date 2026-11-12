@@ -1,0 +1,4 @@
+---
+new_user: "deploy"
+new_user_password_hash: ""
+ssh_key_file: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa.pub"

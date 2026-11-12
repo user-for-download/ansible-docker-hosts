@@ -7,7 +7,7 @@
       - ansible_os_family == "Debian"
       - ansible_distribution == "Ubuntu"
       - ansible_distribution_version is version('20.04', '>=')
-    fail_msg: "Requires Ubuntu 20.04+"
+    fail_msg: Requires Ubuntu 20.04+
 
 # Cloud-Init Removal
 - name: Remove cloud-init
@@ -19,17 +19,47 @@
 
     - name: Purge cloud-init
       ansible.builtin.apt:
-        name: cloud-init
+        name: "{{ item }}"
         state: absent
         purge: true
         autoremove: true
-      when: "'cloud-init' in ansible_facts.packages"
+      loop: "{{ host_settings_cloud_init_packages }}"
+      when: item in ansible_facts.packages
+
+    - name: Disable cloud-init services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+        masked: true
+      loop: "{{ host_settings_cloud_init_services }}"
+      failed_when: false
 
     - name: Remove cloud-init directories
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop: "{{ host_settings_cloud_init_directories }}"
+
+    - name: Check static Netplan configuration
+      ansible.builtin.stat:
+        path: "{{ netplan_config_file | default('/etc/netplan/99-ansible-static.yaml') }}"
+      register: static_netplan_config
+
+    - name: Remove cloud-init Netplan configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/netplan/50-cloud-init.yaml
+        - /etc/netplan/50-cloud-init.yaml.disabled
+      register: cloud_init_netplan_files
+      when: static_netplan_config.stat.exists
+
+    - name: Regenerate Netplan configuration
+      ansible.builtin.command: netplan generate
+      changed_when: false
+      when: static_netplan_config.stat.exists and cloud_init_netplan_files is changed
 
 # Swap Management
 - name: Disable swap
@@ -43,13 +73,13 @@
 
     - name: Turn off active swap
       ansible.builtin.command: swapoff -a
-      when: swap_status.stdout | length > 0
+      when: (swap_status.stdout | default('')) | length > 0
       changed_when: true
 
     - name: Remove swap from fstab
       ansible.builtin.lineinfile:
         path: /etc/fstab
-        regexp: "^[^#].*\\s+swap\\s+"
+        regexp: ^[^#].*\s+swap\s+
         state: absent
 
 # Automatic Updates
@@ -74,10 +104,45 @@
 - name: Manage packages
   tags: [packages]
   block:
-    - name: Update cache
+    - name: Check apt source files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/apt/sources.list
+        - /etc/apt/sources.list.d/ubuntu.sources
+      register: apt_source_files
+
+    - name: Replace standard Ubuntu mirrors with Yandex mirror
+      ansible.builtin.replace:
+        path: "{{ item.item }}"
+        regexp: 'https?://(archive|security)\.ubuntu\.com/ubuntu'
+        replace: http://mirror.yandex.ru/ubuntu
+      loop: "{{ apt_source_files.results }}"
+      when: item.stat.exists
+
+    - name: Check deb822 sources file
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+      register: ubuntu_sources_file
+
+    - name: Ensure universe is enabled in ubuntu.sources
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: '^(Components:(?!.*\buniverse\b).*)$'
+        replace: '\1 universe'
+      when: ubuntu_sources_file.stat.exists
+
+    - name: Ensure multiverse is enabled in ubuntu.sources
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: '^(Components:(?!.*\bmultiverse\b).*)$'
+        replace: '\1 multiverse'
+      when: ubuntu_sources_file.stat.exists
+
+    - name: Force update apt cache after mirror change
       ansible.builtin.apt:
         update_cache: true
-        cache_valid_time: 3600
+        cache_valid_time: 0 # Принудительно выкачать списки пакетов с Яндекса
       register: apt_action
       retries: 3
       delay: 10
@@ -123,10 +188,11 @@
     - name: Add ipv6.disable=1 to GRUB cmdline
       ansible.builtin.replace:
         path: /etc/default/grub
-        regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT=".*)"'
-        replace: '\1 ipv6.disable=1"'
-      when: grub_ipv6_check.rc != 0
+        regexp: ^(GRUB_CMDLINE_LINUX_DEFAULT=".*)"
+        replace: \1 ipv6.disable=1"
+      when: (grub_ipv6_check.rc | default(1)) != 0
       notify: Update grub
+      register: grub_ipv6_updated
 
 # Timezone
 - name: Set timezone
@@ -143,6 +209,9 @@
         path: /var/run/reboot-required
       register: reboot_required_file
 
+    - name: Apply pending handlers before reboot
+      ansible.builtin.meta: flush_handlers
+
     - name: Reboot if needed
       ansible.builtin.reboot:
         reboot_timeout: 300
@@ -150,4 +219,5 @@
         post_reboot_delay: 30
       when: >-
         reboot_required_file.stat.exists or
-        (system_upgraded.changed | default(false))
+        (system_upgraded is defined and system_upgraded.changed) or
+        (grub_ipv6_updated is defined and grub_ipv6_updated is changed)

@@ -11,6 +11,10 @@
   ansible.builtin.include_tasks: configure.yml
   tags: [configure]
 
+- name: Apply pending Docker handlers
+  ansible.builtin.meta: flush_handlers
+  tags: [always]
+
 - name: Configure Docker users
   ansible.builtin.include_tasks: users.yml
   tags: [users]

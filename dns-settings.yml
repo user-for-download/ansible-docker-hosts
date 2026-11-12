@@ -1,0 +1,9 @@
+---
+- name: Configure IPv4-only DNS resolution
+  hosts: ubuntu
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: dns_settings
+      tags: [dns, network]

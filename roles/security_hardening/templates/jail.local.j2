@@ -9,5 +9,5 @@ maxretry = {{ fail2ban_maxretry }}
 enabled = true
 port = {{ ssh_port }}
 filter = sshd
-logpath = /var/log/auth.log
+backend = auto
 maxretry = {{ fail2ban_ssh_maxretry }}

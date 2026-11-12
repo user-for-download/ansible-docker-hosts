@@ -22,7 +22,7 @@
         msg:
           - "Docker Root: {{ docker_root.stdout }}"
           - "Storage Driver: {{ storage_driver.stdout }}"
-          - "Partition UUID: {{ docker_partition_uuid }}"
+          - "Partition UUID: {{ docker_partition_uuid | default('unknown') }}"
 
     - name: Verify Docker daemon
       ansible.builtin.command: docker info
@@ -30,9 +30,10 @@
 
 - name: Clean up old directory
   when:
-    - docker_dir_moved is defined
-    - docker_dir_moved is changed
     - cleanup_old_docker_dir | bool
+    - >-
+      (docker_dir_moved is defined and docker_dir_moved is changed) or
+      (docker_old_dir is defined and docker_old_dir.stat.exists)
   ansible.builtin.file:
     path: "{{ docker_data_path }}.old"
     state: absent

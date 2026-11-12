@@ -6,13 +6,18 @@
     mode: "0644"
   register: gpg_download
 
+- name: Check de-armored GPG key
+  ansible.builtin.stat:
+    path: /usr/share/keyrings/docker-archive-keyring.gpg
+  register: docker_gpg_keyring
+
 - name: De-armor GPG key
   ansible.builtin.command:
     cmd: >-
       gpg --batch --yes --dearmor
       -o /usr/share/keyrings/docker-archive-keyring.gpg
       /usr/share/keyrings/docker-archive-keyring.asc
-  when: gpg_download.changed
+  when: gpg_download.changed or not docker_gpg_keyring.stat.exists
   changed_when: true
 
 - name: Add Docker repository

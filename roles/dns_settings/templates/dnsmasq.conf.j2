@@ -1,0 +1,15 @@
+# Local resolver configuration (dnsmasq)
+{% for server in dns_settings_servers %}
+server={{ server }}
+{% endfor %}
+{% if dns_settings_dnssec %}
+dnssec
+{% endif %}
+{% if dns_settings_filter_aaaa %}
+filter-AAAA
+{% endif %}
+no-resolv
+listen-address={{ dns_settings_listen_address }}
+bind-interfaces
+no-dhcp-interface=*
+cache-size={{ dns_settings_cache_size }}

@@ -12,6 +12,22 @@ host_settings_cloud_init_directories:
   - /etc/cloud/
   - /var/lib/cloud/
 
+# cloud-init-base is manually marked on cloud images, so purging the
+# cloud-init metapackage alone leaves it installed and it regenerates
+# /etc/netplan/50-cloud-init.yaml (DHCP) on every boot.
+host_settings_cloud_init_packages:
+  - cloud-init
+  - cloud-init-base
+
+host_settings_cloud_init_services:
+  - cloud-init-local.service
+  - cloud-init-main.service
+  - cloud-init-network.service
+  - cloud-config.service
+  - cloud-init.target
+  - cloud-init-hotplugd.service
+  - cloud-init-hotplugd.socket
+
 host_settings_ipv6_disable_params:
   - net.ipv6.conf.all.disable_ipv6
   - net.ipv6.conf.default.disable_ipv6

@@ -5,7 +5,11 @@
     state: present
     shell: /bin/bash
     createhome: true
-    password: "{{ new_user_password | password_hash('sha512') }}"
+    password: >-
+      {{ new_user_password_hash
+         if new_user_password_hash | default('') | length > 0
+         else omit }}
+    update_password: on_create
     groups: sudo
     append: true
 

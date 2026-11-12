@@ -1,0 +1,4 @@
+---
+- name: Notify about shell change
+  ansible.builtin.debug:
+    msg: "Shell changed to zsh for {{ zsh_user }}. Log out and back in to activate."

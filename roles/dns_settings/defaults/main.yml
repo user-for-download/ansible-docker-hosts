@@ -1,0 +1,44 @@
+---
+# Upstream DNS servers used by the local resolver (IPv4 addresses only).
+# Defaults to the servers configured for the host network.
+dns_settings_servers: "{{ static_dns_servers | default(['10.0.2.100']) }}"
+
+# Address the local resolver listens on. Keep it on loopback so the
+# resolver is not reachable from the network.
+dns_settings_listen_address: "127.0.0.1"
+
+# Drop AAAA records from answers. Required on IPv4-only hosts: the
+# upstream server returns IPv6 addresses that the host cannot use.
+dns_settings_filter_aaaa: true
+
+# Enable DNSSEC validation in the local resolver.
+dns_settings_dnssec: false
+
+# Search domain list written to /etc/resolv.conf.
+dns_settings_search_domains: "{{ [static_dns_search] | default(['example.local']) }}"
+
+# Cache size for the local resolver.
+dns_settings_cache_size: 1000
+
+# Options rendered in the "options" line of /etc/resolv.conf.
+dns_settings_resolv_options:
+  - "edns0"
+  - "trust-ad"
+
+# Directory for drop-in resolver configuration.
+dns_settings_config_dir: "/etc/dnsmasq.d"
+
+# Name of the drop-in configuration file.
+dns_settings_config_file: "99-ansible-dns.conf"
+
+# Keep the resolver package from registering itself with resolvconf and
+# rewriting /etc/resolv.conf behind the role's back.
+dns_settings_ignore_resolvconf: true
+
+# Domain used to verify that resolution returns IPv4 addresses only.
+dns_settings_test_domain: "ubuntu.com"
+
+# Packages required for the local resolver.
+dns_settings_packages:
+  - dnsmasq
+  - dnsutils

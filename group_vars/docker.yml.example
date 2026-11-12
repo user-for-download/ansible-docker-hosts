@@ -22,4 +22,10 @@ docker_daemon_config:
 docker_insecure_registries: []
 docker_registry_mirrors: []
 
-configure_docker_storage: true
+# Dedicated-disk Docker storage (docker-storage.yml).
+# Set the device and partition before enabling; docker_storage_wipe_disk
+# must be true only when the disk may be erased.
+# device2_hdd_docker: "sdb"
+# parted_hdd_docker: "/dev/sdb1"
+# docker_storage_wipe_disk: false
+configure_docker_storage: false

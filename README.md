@@ -1,6 +1,6 @@
 # Ansible Docker Hosts
 
-Automated Ubuntu server provisioning with Docker, security hardening, and modern Zsh environment.
+Automated Ubuntu server provisioning with Docker, NTP, optional security hardening, and a modern Zsh environment.
 
 ## Quick Start
 
@@ -8,6 +8,9 @@ Automated Ubuntu server provisioning with Docker, security hardening, and modern
 # Clone
 git clone git@github.com:user-for-download/ansible-docker-hosts.git
 cd ansible-docker-hosts
+
+# Install required collections
+ansible-galaxy collection install -r requirements.yml
 
 # Setup config files (copy examples to working configs)
 cp group_vars/all.yml.example group_vars/all.yml
@@ -21,14 +24,24 @@ vi group_vars/ubuntu.yml
 vi group_vars/docker.yml
 vi inventory.yml
 
-# Run pre-settings (system prep + security)
+# Optional: configure the static IP first (drops and reconnects SSH)
+ansible-playbook set-ip.yml --limit <host>
+
+# Run pre-settings (system prep + NTP)
 ansible-playbook pre-settings.yml --limit <host>
 
 # Install Docker
 ansible-playbook docker-setup.yml --limit <host>
 
+# Optional: move Docker data to a dedicated disk
+# Requires configure_docker_storage: true and device variables.
+ansible-playbook docker-storage.yml --limit <host>
+
 # Setup Zsh environment
 ansible-playbook user-setup.yml --limit <host>
+
+# Optional: IPv4-only DNS via a local resolver (dnsmasq)
+ansible-playbook dns-settings.yml --limit <host>
 ```
 
 ## Inventory
@@ -51,11 +64,12 @@ all:
 
 | Playbook | Description |
 |----------|-------------|
-| `pre-settings.yml` | System preparation, NTP, firewall, security hardening |
+| `pre-settings.yml` | System preparation and NTP (security hardening is optional) |
 | `docker-setup.yml` | Docker CE + Compose plugin installation |
-| `docker-storage.yml` | Docker storage on dedicated disk |
-| `user-setup.yml` | Zsh + Zinit + Powerlevel10k environment |
+| `docker-storage.yml` | Docker storage on dedicated disk (disabled by default) |
+| `user-setup.yml` | Zsh + Zinit + Powerlevel10k environment (user creation is optional) |
 | `set-ip.yml` | Static IP configuration via Netplan |
+| `dns-settings.yml` | IPv4-only DNS via a local resolver (dnsmasq) |
 
 ## Roles
 
@@ -72,8 +86,9 @@ all:
 - Custom server configuration
 
 ### security_hardening
-- **UFW** (default): SSH from trusted networks only
-- **nftables** (commented alternative): `/etc/nftables.conf` with port 22 open
+- Optional; uncomment the role in `pre-settings.yml` to enable.
+- **UFW**: SSH from trusted networks only
+- **nftables** (commented alternative): `/etc/nftables.conf` with SSH allowed from IPv4/IPv6 networks
 - Fail2Ban for SSH brute-force protection
 
 ### docker_install
@@ -86,15 +101,27 @@ all:
 - Standalone binary (alternative)
 
 ### docker_storage
+- Optional; requires `configure_docker_storage: true`, `device2_hdd_docker` and `parted_hdd_docker`.
+- Refuses disks with mounted filesystems or unexpected partitions.
 - Dedicated disk partitioning (GPT + ext4)
 - Data migration from default Docker directory
 - UUID-based fstab mount
 
 ### netplan_static
-- Static IP via Netplan
-- Post-apply connectivity verification
+- Static IP via Netplan (uses `99-ansible-static.yaml`)
+- Disables the cloud-init Netplan file when present
+- Reconnects to the new address asynchronously and verifies the configured IP
+
+### dns_settings
+- Local resolver (dnsmasq) on loopback, upstream servers from `static_dns_servers`
+- Drops AAAA records so IPv4-only hosts never receive IPv6 addresses
+- Stops systemd-resolved so a single, filtered DNS path remains
+- Writes `/etc/resolv.conf` (search domains and options)
+- Verifies that A records resolve and AAAA records are filtered
 
 ### user_setup
+- Optional; uncomment the role in `user-setup.yml` to enable.
+- Set `new_user`, `ssh_key_file` and, if needed, `new_user_password_hash`.
 - User creation with sudo access
 - SSH key deployment
 - Passwordless sudo configuration
@@ -114,12 +141,13 @@ Key variables in `group_vars/`:
 
 | File | Variables |
 |------|-----------|
-| `all.yml` | `trusted_networks`, `timezone`, `static_interface`, `apt_proxy` |
+| `all.yml` | `trusted_networks`, `timezone`, `static_interface`, `static_gateway`, `static_dns_servers`, `static_dns_search`, `netplan_config_file` |
 | `ubuntu.yml` | `core_dependencies`, `ntp_servers`, `ssh_port`, `fail2ban_*` |
-| `docker.yml` | `docker_version`, `docker_compose_version`, `docker_daemon_config` |
+| `docker.yml` | `docker_version`, `docker_compose_version`, `docker_daemon_config`, `configure_docker_storage`, `device2_hdd_docker`, `parted_hdd_docker` |
 
 ## Requirements
 
-- Ansible 2.12+
+- Ansible 2.15+
+- Collections: `ansible.posix`, `community.general` (see `requirements.yml`)
 - Target: Ubuntu 20.04+
 - SSH access to target hosts

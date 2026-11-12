@@ -1,0 +1,7 @@
+# Managed by Ansible (dns_settings role).
+# The local resolver (dnsmasq) is the only DNS path, so answers are
+# restricted to IPv4 and upstream servers are fixed.
+[Resolve]
+DNSStubListener=no
+DNS=127.0.0.1
+FallbackDNS=

@@ -48,6 +48,7 @@
     state: touch
     modification_time: preserve
     access_time: preserve
+    mode: "0644"
     owner: "{{ zsh_user }}"
     group: "{{ zsh_user_group }}"
   loop:
@@ -66,6 +67,18 @@
     owner: "{{ zsh_user }}"
     group: "{{ zsh_user_group }}"
     force: false
+
+- name: Check eza availability
+  ansible.builtin.command: apt-cache show eza
+  register: eza_available
+  changed_when: false
+  failed_when: false
+
+- name: Install eza (optional)
+  ansible.builtin.apt:
+    name: eza
+    state: present
+  when: (eza_available.rc | default(1)) == 0
 
 # --- Symlinks for Debian/Ubuntu quirks ---
 - name: Check if batcat exists
@@ -125,16 +138,23 @@
     dest: "{{ zsh_user_home }}/.fzf"
     version: master
     depth: 1
-    update: true
+    update: "{{ zsh_git_update | bool }}"
   register: fzf_clone
+
+- name: Check FZF zsh integration
+  ansible.builtin.stat:
+    path: "{{ zsh_user_home }}/.fzf.zsh"
+  register: fzf_zsh_integration
 
 - name: Install FZF
   become: true
   become_user: "{{ zsh_user }}"
-  ansible.builtin.shell: "{{ zsh_user_home }}/.fzf/install --all --no-update-rc --no-bash --no-fish"
+  ansible.builtin.command: >-
+    {{ zsh_user_home }}/.fzf/install --all --no-update-rc
+    --no-bash --no-fish
   args:
     creates: "{{ zsh_user_home }}/.fzf.zsh"
-  when: fzf_clone.changed or not lookup('file', zsh_user_home + '/.fzf.zsh', errors='ignore')
+  when: fzf_clone.changed or not fzf_zsh_integration.stat.exists
 
 # --- Zoxide ---
 - name: Check if zoxide is installed
@@ -142,15 +162,27 @@
     path: "{{ zsh_user_home }}/.local/bin/zoxide"
   register: zoxide_bin
 
+- name: Download zoxide installer
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh
+    dest: /tmp/zoxide-install.sh
+    mode: "0755"
+  when: not zoxide_bin.stat.exists
+
 - name: Install Zoxide
   become: true
   become_user: "{{ zsh_user }}"
-  ansible.builtin.shell: curl -sSf https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
+  ansible.builtin.command: /tmp/zoxide-install.sh
   args:
     creates: "{{ zsh_user_home }}/.local/bin/zoxide"
   environment:
     HOME: "{{ zsh_user_home }}"
   when: not zoxide_bin.stat.exists
+
+- name: Remove zoxide installer
+  ansible.builtin.file:
+    path: /tmp/zoxide-install.sh
+    state: absent
 
 # --- Zinit ---
 - name: Check existing zinit directory ownership
@@ -181,7 +213,7 @@
     dest: "{{ zinit_home }}"
     version: main
     depth: 1
-    update: true
+    update: "{{ zsh_git_update | bool }}"
 
 # --- Backup existing .zshrc ---
 - name: Backup existing .zshrc
@@ -190,6 +222,9 @@
     dest: "{{ zsh_user_home }}/.zshrc.backup.{{ ansible_date_time.epoch }}"
     remote_src: true
     force: true
+    mode: "0600"
+    owner: "{{ zsh_user }}"
+    group: "{{ zsh_user_group }}"
   register: zshrc_backup
   failed_when: false
 
@@ -242,8 +277,4 @@
     name: "{{ zsh_user }}"
     shell: /bin/zsh
   register: shell_changed
-
-- name: Notify about shell change
-  ansible.builtin.debug:
-    msg: "Shell changed to zsh for {{ zsh_user }}. Log out and back in to activate."
-  when: shell_changed.changed
+  notify: Notify about shell change

@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+nameserver {{ dns_settings_listen_address }}
+{% for domain in dns_settings_search_domains %}
+search {{ domain }}
+{% endfor %}
+{% if dns_settings_resolv_options | length > 0 %}
+options {{ dns_settings_resolv_options | join(' ') }}
+{% endif %}

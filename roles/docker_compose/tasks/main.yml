@@ -11,10 +11,13 @@
     - name: Display Compose plugin version
       ansible.builtin.debug:
         msg: "Docker Compose plugin: {{ compose_plugin_version.stdout }}"
+      when: not ansible_check_mode
 
 # Binary method — standalone binary
 - name: Install Docker Compose binary
-  when: docker_compose_install_method == "binary"
+  when:
+    - docker_compose_install_method == "binary"
+    - not ansible_check_mode
   block:
     - name: Set architecture
       ansible.builtin.set_fact:
@@ -47,7 +50,10 @@
           ansible.builtin.get_url:
             url: "{{ docker_compose_url }}"
             dest: /usr/local/bin/docker-compose
-            checksum: "{{ 'sha256:' + compose_checksum.content.split()[0] if compose_checksum is succeeded else omit }}"
+            checksum: >-
+              {{ ('sha256:' + compose_checksum.content.split()[0])
+                 if (compose_checksum.status | default(0) == 200)
+                 else omit }}
             owner: root
             group: root
             mode: "0755"
